@@ -1,0 +1,158 @@
+from __future__ import annotations
+from datetime import datetime
+from typing import Any
+from sqlalchemy import (
+    String, Integer, Boolean, ForeignKey, DateTime, Text, JSON, BigInteger, UniqueConstraint, func,
+)
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+from .session import Base
+
+
+class TimestampMixin:
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class Role(Base, TimestampMixin):
+    __tablename__ = "roles"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    code: Mapped[str] = mapped_column(String(32), unique=True)  # admin/operator/user
+    name: Mapped[str] = mapped_column(String(64))
+    description: Mapped[str | None] = mapped_column(String(256))
+
+
+class User(Base, TimestampMixin):
+    __tablename__ = "users"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    username: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    password_hash: Mapped[str] = mapped_column(String(256))
+    display_name: Mapped[str | None] = mapped_column(String(128))
+    role_id: Mapped[int] = mapped_column(ForeignKey("roles.id"))
+    status: Mapped[str] = mapped_column(String(16), default="active")  # active/disabled
+
+    role: Mapped[Role] = relationship(lazy="joined")
+
+
+class Model(Base, TimestampMixin):
+    __tablename__ = "models"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    code: Mapped[str] = mapped_column(String(64), unique=True)
+    provider: Mapped[str] = mapped_column(String(32))  # anthropic/openai-compatible
+    model_id: Mapped[str] = mapped_column(String(128))
+    base_url: Mapped[str | None] = mapped_column(String(256))
+    api_key_enc: Mapped[str | None] = mapped_column(Text)
+    max_tokens: Mapped[int] = mapped_column(Integer, default=8192)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class MCPConnector(Base, TimestampMixin):
+    __tablename__ = "mcp_connectors"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(64), unique=True)
+    transport: Mapped[str] = mapped_column(String(16))  # stdio/sse/http
+    config_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class Skill(Base, TimestampMixin):
+    __tablename__ = "skills"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    code: Mapped[str] = mapped_column(String(64), unique=True)
+    name: Mapped[str] = mapped_column(String(128))
+    description: Mapped[str] = mapped_column(Text)
+    type: Mapped[str] = mapped_column(String(16))  # atomic / composite
+    # atomic: {"path": ".../skill_dir"}; composite: {"yaml": "..."} (parsed at runtime)
+    source_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+
+
+class Agent(Base, TimestampMixin):
+    __tablename__ = "agents"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    code: Mapped[str] = mapped_column(String(64), unique=True)
+    name: Mapped[str] = mapped_column(String(128))
+    description: Mapped[str | None] = mapped_column(Text)
+    icon: Mapped[str | None] = mapped_column(String(256))
+    system_prompt: Mapped[str] = mapped_column(Text, default="")
+    default_model_id: Mapped[int | None] = mapped_column(ForeignKey("models.id"))
+    fallback_model_id: Mapped[int | None] = mapped_column(ForeignKey("models.id"))
+    upload_policy_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class AgentSkill(Base):
+    __tablename__ = "agent_skills"
+    agent_id: Mapped[int] = mapped_column(ForeignKey("agents.id", ondelete="CASCADE"), primary_key=True)
+    skill_id: Mapped[int] = mapped_column(ForeignKey("skills.id", ondelete="CASCADE"), primary_key=True)
+
+
+class AgentMCP(Base):
+    __tablename__ = "agent_mcps"
+    agent_id: Mapped[int] = mapped_column(ForeignKey("agents.id", ondelete="CASCADE"), primary_key=True)
+    mcp_id: Mapped[int] = mapped_column(ForeignKey("mcp_connectors.id", ondelete="CASCADE"), primary_key=True)
+
+
+class RoleAgentGrant(Base):
+    __tablename__ = "role_agent_grants"
+    role_id: Mapped[int] = mapped_column(ForeignKey("roles.id", ondelete="CASCADE"), primary_key=True)
+    agent_id: Mapped[int] = mapped_column(ForeignKey("agents.id", ondelete="CASCADE"), primary_key=True)
+
+
+class Conversation(Base, TimestampMixin):
+    __tablename__ = "conversations"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    agent_id: Mapped[int] = mapped_column(ForeignKey("agents.id"), index=True)
+    title: Mapped[str] = mapped_column(String(256), default="新对话")
+
+
+class Message(Base):
+    __tablename__ = "messages"
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    conversation_id: Mapped[int] = mapped_column(ForeignKey("conversations.id", ondelete="CASCADE"), index=True)
+    role: Mapped[str] = mapped_column(String(16))  # user/assistant/tool/system
+    content_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    tool_calls_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    tokens_in: Mapped[int] = mapped_column(Integer, default=0)
+    tokens_out: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+
+class UploadedFile(Base):
+    __tablename__ = "uploaded_files"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    conversation_id: Mapped[int | None] = mapped_column(ForeignKey("conversations.id", ondelete="SET NULL"))
+    name: Mapped[str] = mapped_column(String(256))
+    path: Mapped[str] = mapped_column(String(512))
+    size: Mapped[int] = mapped_column(BigInteger)
+    mime: Mapped[str] = mapped_column(String(128))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class AuditLog(Base):
+    __tablename__ = "audit_logs"
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    action: Mapped[str] = mapped_column(String(64))
+    target_type: Mapped[str | None] = mapped_column(String(32))
+    target_id: Mapped[str | None] = mapped_column(String(64))
+    detail_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+
+class CallLog(Base):
+    __tablename__ = "call_logs"
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    agent_id: Mapped[int | None] = mapped_column(ForeignKey("agents.id", ondelete="SET NULL"))
+    conversation_id: Mapped[int | None] = mapped_column(ForeignKey("conversations.id", ondelete="SET NULL"))
+    model_id: Mapped[int | None] = mapped_column(ForeignKey("models.id", ondelete="SET NULL"))
+    tokens_in: Mapped[int] = mapped_column(Integer, default=0)
+    tokens_out: Mapped[int] = mapped_column(Integer, default=0)
+    latency_ms: Mapped[int] = mapped_column(Integer, default=0)
+    status: Mapped[str] = mapped_column(String(16), default="ok")
+    error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
