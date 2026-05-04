@@ -39,7 +39,25 @@
       "Bash(python3 -c ' *)",
       "Bash(curl -s -o /dev/null -w \"WEB %{http_code}\\\\n\" http://localhost:5173/)",
       "Bash(.venv/bin/python -)",
-      "Bash(.venv/bin/python -c \"from claude_agent_sdk.types import ClaudeAgentOptions; import inspect; src=inspect.getsourcefile\\(ClaudeAgentOptions\\); print\\(src\\)\")"
+      "Bash(.venv/bin/python -c \"from claude_agent_sdk.types import ClaudeAgentOptions; import inspect; src=inspect.getsourcefile\\(ClaudeAgentOptions\\); print\\(src\\)\")",
+      "WebFetch(domain:docs.claude.com)",
+      "WebSearch",
+      "Bash(.venv/bin/python -c \"import ast; ast.parse\\(open\\('app/runtime/agent_runner.py'\\).read\\(\\)\\); print\\('OK'\\)\")",
+      "Bash(.venv/bin/python -c ' *)",
+      "Bash(.venv/bin/python -c \"import app.api.admin.skills; print\\('OK'\\)\")",
+      "Bash(.venv/bin/python -c \"import app.runtime.agent_runner, app.api.chat; print\\('OK'\\)\")",
+      "Bash(grep -n \"</section>\\\\|</div>$\\\\|</template>\\\\|<style scoped>\" /Users/sun/Desktop/h3c-agent/frontend/src/views/chat/Chat.vue)",
+      "Bash(.venv/bin/python -c \"import app.runtime.agent_runner, app.api.chat, app.api.downloads; print\\('OK'\\)\")",
+      "Bash(.venv/bin/python -c \"import app.api.downloads; print\\('OK'\\)\")",
+      "Bash(.venv/bin/python -c \"import app.runtime.agent_runner; print\\('OK'\\)\")",
+      "Bash(npx vue-tsc *)",
+      "Bash(python -m py_compile /Users/sun/Desktop/h3c-agent/backend/app/api/chat.py)",
+      "Bash(./node_modules/.bin/vue-tsc --noEmit)",
+      "Bash(echo \"EXIT=$?\")",
+      "Bash(ps -eo pid,lstart,command)",
+      "Bash(curl -s -o /dev/null -w \"GET /api/agents/1/capabilities -> %{http_code}\\\\n\" http://localhost:8000/api/agents/1/capabilities)",
+      "Bash(kill 19781)",
+      "Bash(.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload)"
     ]
   }
 }

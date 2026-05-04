@@ -1,5 +1,5 @@
 <template>
-  <div class="chat-wrap">
+  <div class="chat-wrap" :class="{ 'split-mode': previewFile }">
     <!-- Conversation -->
     <section class="conv">
       <div ref="scrollRef" class="messages">
@@ -58,9 +58,33 @@
                 </div>
               </div>
 
+              <!-- file cards (saved outputs) -->
+              <div v-if="(m.content_json?.files?.length) || m._files?.length" class="files-block">
+                <FileCard
+                  v-for="(f, fi) in (m._files?.length ? m._files : m.content_json.files)"
+                  :key="fi + (f.name || '')"
+                  :file="f"
+                  @preview="openPreview"
+                />
+              </div>
+
               <!-- main answer -->
               <div v-if="m.content_json?.text || m.role === 'user'" class="bubble">
-                <div class="bubble-content" v-html="renderContent(m)"></div>
+                <template v-if="m.role === 'user'">
+                  <div class="bubble-content" v-html="md.render(m.content_json?.text || '')"></div>
+                </template>
+                <template v-else>
+                  <template v-for="(seg, si) in parseSegments(m)" :key="seg.type === 'widget' ? (seg.partialKey || seg.stableKey) : `t-${si}`">
+                    <div v-if="seg.type === 'text'" class="bubble-content" v-html="md.render(seg.content)"></div>
+                    <WidgetRenderer
+                      v-else
+                      :widget-code="seg.widgetCode"
+                      :title="seg.title"
+                      :is-streaming="seg.isStreaming"
+                      @send-message="onWidgetSendMessage"
+                    />
+                  </template>
+                </template>
               </div>
             </div>
           </div>
@@ -95,6 +119,7 @@
         </div>
       </div>
     </section>
+    <PreviewPanel v-if="previewFile" :file="previewFile" @close="closePreview" />
   </div>
 </template>
 
@@ -104,6 +129,10 @@ import { ElMessage } from 'element-plus'
 import { api } from '@/api'
 import { useChat } from '@/stores/chat'
 import MarkdownIt from 'markdown-it'
+import WidgetRenderer from '@/components/WidgetRenderer.vue'
+import FileCard from '@/components/FileCard.vue'
+import PreviewPanel from '@/components/PreviewPanel.vue'
+import { parseMessageContent } from '@/lib/widget-parser'
 
 const md = new MarkdownIt({ breaks: true, linkify: true })
 const chat = useChat()
@@ -111,6 +140,10 @@ const chat = useChat()
 const input = ref('')
 const sending = ref(false)
 const scrollRef = ref<HTMLElement | null>(null)
+const previewFile = ref<any | null>(null)
+
+function openPreview(f: any) { previewFile.value = f }
+function closePreview() { previewFile.value = null }
 
 onMounted(async () => {
   if (!chat.loaded) await chat.loadInit()
@@ -138,6 +171,17 @@ function removeFile(f: any) {
 function renderContent(m: any) {
   const text = m.content_json?.text || ''
   return md.render(text)
+}
+
+function parseSegments(m: any) {
+  const text = m.content_json?.text || ''
+  return parseMessageContent(text, !!m._streaming)
+}
+
+function onWidgetSendMessage(text: string) {
+  if (!text || sending.value) return
+  input.value = text
+  send()
 }
 
 function normalizeTrace(trace: any[] | undefined) {
@@ -176,7 +220,8 @@ async function send() {
   chat.messages.push({
     _tmp: Date.now() + 1, role: 'assistant',
     content_json: { text: '' }, tool_calls_json: null,
-    _meta: null, _thinking: '', _steps: [], _stepIndex: {} as Record<string, number>,
+    _meta: null, _thinking: '', _steps: [], _stepIndex: {} as Record<string, number>, _files: [],
+    _streaming: true,
   })
   // IMPORTANT: keep a reference to the *reactive proxy* (last array element),
   // not the plain object literal above. Mutating the proxy is what notifies Vue.
@@ -215,6 +260,7 @@ async function send() {
     placeholder.content_json.text += `\n\n[网络错误] ${e.message}`
   } finally {
     placeholder._steps?.forEach((s: any) => { if (s.status === 'running') s.status = 'done' })
+    placeholder._streaming = false
     sending.value = false
   }
 
@@ -267,6 +313,9 @@ function applyEvent(m: any, ev: { type: string; data: any }) {
       s.status = 'done'
       if (s._start) s.duration_ms = Math.round(performance.now() - s._start)
     }
+  } else if (type === 'file') {
+    if (!m._files) m._files = []
+    m._files.push(data)
   } else if (type === 'error') {
     m.content_json.text += `\n\n[错误] ${data.message}`
   }
@@ -275,6 +324,10 @@ function applyEvent(m: any, ev: { type: string; data: any }) {
 
 <style scoped>
 .chat-wrap { display: flex; height: 100%; background: var(--m-bg); }
+.chat-wrap.split-mode .conv { flex: 1 1 50%; max-width: 50%; }
+.chat-wrap.split-mode :deep(.preview-panel) { flex: 1 1 50%; max-width: 50%; }
+
+.files-block { display: flex; flex-direction: column; gap: 4px; }
 
 /* Conv main */
 .conv { flex: 1; display: flex; flex-direction: column; min-width: 0; background: var(--m-surface); }
@@ -324,8 +377,11 @@ function applyEvent(m: any, ev: { type: string; data: any }) {
 
 .tool-trace-list { margin-top: 8px; }
 
-/* Bubble stack: meta + thinking + steps + bubble vertically */
-.bubble-stack { display: flex; flex-direction: column; gap: 8px; max-width: 80%; min-width: 0; }
+/* Bubble stack: meta + thinking + steps + bubble vertically.
+   `flex: 1` makes the stack always claim the available row space (capped by
+   max-width), so widgets and tool cards render at a consistent width
+   regardless of which child rendered first. */
+.bubble-stack { display: flex; flex-direction: column; gap: 8px; flex: 1 1 0; max-width: 80%; min-width: 0; }
 .msg.user .bubble-stack { align-items: flex-end; }
 
 .msg-meta {

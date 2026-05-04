@@ -11,11 +11,12 @@ from ...core.config import settings
 from ...db.session import get_db
 from ...db.models import Skill
 from ...deps import require_admin_or_operator
+from ...services.audit import audit
+from ...db.models import User
 from ...schemas import SkillIn, SkillOut
 from ...runtime.skill_loader import validate_composite_yaml
 
-router = APIRouter(prefix="/api/admin/skills", tags=["admin-skills"],
-                   dependencies=[Depends(require_admin_or_operator)])
+router = APIRouter(prefix="/api/admin/skills", tags=["admin-skills"])
 
 
 def _validate(payload: SkillIn) -> None:
@@ -36,22 +37,23 @@ def _validate(payload: SkillIn) -> None:
 
 
 @router.get("", response_model=list[SkillOut])
-async def list_skills(db: AsyncSession = Depends(get_db)):
+async def list_skills(db: AsyncSession = Depends(get_db), _=Depends(require_admin_or_operator)):
     return (await db.execute(select(Skill).order_by(Skill.id))).scalars().all()
 
 
 @router.post("", response_model=SkillOut)
-async def create_skill(payload: SkillIn, db: AsyncSession = Depends(get_db)):
+async def create_skill(payload: SkillIn, db: AsyncSession = Depends(get_db), actor: User = Depends(require_admin_or_operator)):
     _validate(payload)
     if (await db.execute(select(Skill).where(Skill.code == payload.code))).scalar_one_or_none():
         raise HTTPException(400, "code 已存在")
     s = Skill(**payload.model_dump())
+    await audit(db, actor.id, "skill.create", target_type="skill", target_id=None)
     db.add(s); await db.commit(); await db.refresh(s)
     return s
 
 
 @router.patch("/{sid}", response_model=SkillOut)
-async def update_skill(sid: int, payload: SkillIn, db: AsyncSession = Depends(get_db)):
+async def update_skill(sid: int, payload: SkillIn, db: AsyncSession = Depends(get_db), actor: User = Depends(require_admin_or_operator)):
     _validate(payload)
     s = (await db.execute(select(Skill).where(Skill.id == sid))).scalar_one_or_none()
     if not s:
@@ -59,12 +61,13 @@ async def update_skill(sid: int, payload: SkillIn, db: AsyncSession = Depends(ge
     for k, v in payload.model_dump().items():
         setattr(s, k, v)
     s.version += 1
+    await audit(db, actor.id, "skill.update", target_type="skill", target_id=s.id)
     await db.commit(); await db.refresh(s)
     return s
 
 
 @router.delete("/{sid}")
-async def delete_skill(sid: int, db: AsyncSession = Depends(get_db)):
+async def delete_skill(sid: int, db: AsyncSession = Depends(get_db), actor: User = Depends(require_admin_or_operator)):
     s = (await db.execute(select(Skill).where(Skill.id == sid))).scalar_one_or_none()
     if not s:
         raise HTTPException(404, "不存在")
@@ -78,6 +81,7 @@ async def delete_skill(sid: int, db: AsyncSession = Depends(get_db)):
                 shutil.rmtree(target, ignore_errors=True)
         except Exception:
             pass
+    await audit(db, actor.id, "skill.delete", target_type="skill", target_id=s.id)
     await db.delete(s); await db.commit()
     return {"ok": True}
 
@@ -108,8 +112,10 @@ async def upload_skill(
     code: str = Form(...),
     name: str = Form(...),
     description: str = Form(""),
+    force: bool = Form(False),
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
+    actor: User = Depends(require_admin_or_operator),
 ):
     if not file.filename or not file.filename.lower().endswith(".zip"):
         raise HTTPException(400, "请上传 zip 包")
@@ -140,6 +146,21 @@ async def upload_skill(
             _safe_extract(zf, extract_dir)
         # locate SKILL.md
         skill_root = _find_skill_root(extract_dir)
+
+        # Static scan: dangerous bash/python patterns
+        from ...services.skill_scan import scan_skill_dir
+        findings = scan_skill_dir(skill_root)
+        if findings and not force:
+            await audit(db, actor.id, "skill.upload_blocked", target_type="skill", target_id=code,
+                        detail={"findings": findings[:20]})
+            await db.commit()
+            raise HTTPException(400, {"message": "Skill 内容触发安全规则,被拒绝",
+                                      "findings": findings,
+                                      "hint": "确认无问题可在请求中加 force=true 强制通过"})
+        if findings:
+            await audit(db, actor.id, "skill.upload_force", target_type="skill", target_id=code,
+                        detail={"findings": findings[:20]})
+
         # parse SKILL.md frontmatter for description (best-effort)
         skill_md = (skill_root / "SKILL.md").read_text(encoding="utf-8", errors="ignore")
         if not description:
@@ -154,7 +175,10 @@ async def upload_skill(
         source_json={"path": str(target_dir.resolve())},
         enabled=True,
     )
-    db.add(s); await db.commit(); await db.refresh(s)
+    db.add(s); await db.flush()
+    await audit(db, actor.id, "skill.upload", target_type="skill", target_id=s.id,
+                detail={"code": code})
+    await db.commit(); await db.refresh(s)
     return s
 
 
@@ -206,7 +230,7 @@ def _build_tree(root: Path, base: Path) -> list[dict]:
 
 
 @router.get("/{sid}/files")
-async def get_skill_files(sid: int, db: AsyncSession = Depends(get_db)):
+async def get_skill_files(sid: int, db: AsyncSession = Depends(get_db), _=Depends(require_admin_or_operator)):
     s = (await db.execute(select(Skill).where(Skill.id == sid))).scalar_one_or_none()
     if not s:
         raise HTTPException(404, "不存在")
@@ -219,7 +243,7 @@ TEXT_EXT = {".md", ".txt", ".py", ".js", ".ts", ".json", ".yml", ".yaml", ".html
 
 
 @router.get("/{sid}/file")
-async def get_skill_file(sid: int, path: str, db: AsyncSession = Depends(get_db)):
+async def get_skill_file(sid: int, path: str, db: AsyncSession = Depends(get_db), _=Depends(require_admin_or_operator)):
     s = (await db.execute(select(Skill).where(Skill.id == sid))).scalar_one_or_none()
     if not s:
         raise HTTPException(404, "不存在")
@@ -236,6 +260,81 @@ async def get_skill_file(sid: int, path: str, db: AsyncSession = Depends(get_db)
     is_text = ext in TEXT_EXT or size < 64 * 1024
     try:
         content = target.read_text(encoding="utf-8")
-        return {"path": path, "size": size, "ext": ext, "content": content, "binary": False}
+        return {"path": path, "size": size, "ext": ext, "content": content, "binary": False, "editable": _is_editable(target)}
     except UnicodeDecodeError:
-        return {"path": path, "size": size, "ext": ext, "content": "(二进制文件,无法预览)", "binary": True}
+        return {"path": path, "size": size, "ext": ext, "content": "(二进制文件,无法预览)", "binary": True, "editable": False}
+
+
+# ---------- Editable text files ----------
+EDITABLE_EXT = {".md", ".txt", ".yaml", ".yml", ".json", ".ini", ".cfg", ".toml", ".csv", ".xml", ".html", ".css", ".sql"}
+
+
+def _is_editable(p: Path) -> bool:
+    return p.suffix.lower() in EDITABLE_EXT
+
+
+from pydantic import BaseModel as _BM
+
+
+class SkillFileSave(_BM):
+    path: str
+    content: str
+
+
+@router.put("/{sid}/file")
+async def put_skill_file(
+    sid: int, payload: SkillFileSave,
+    db: AsyncSession = Depends(get_db),
+    actor: User = Depends(require_admin_or_operator),
+):
+    """In-place edit a text file inside a path-based atomic skill bundle.
+
+    Restrictions:
+    - Path must resolve inside the skill directory (no traversal).
+    - Extension must be in EDITABLE_EXT (no .py / .sh / binaries).
+    - Content size capped at 2 MB.
+    - Re-runs the static scanner; high-risk patterns block save (admin can opt out via force=true query).
+    """
+    s = (await db.execute(select(Skill).where(Skill.id == sid))).scalar_one_or_none()
+    if not s:
+        raise HTTPException(404, "不存在")
+    root = _resolve_skill_dir(s)
+    target = (root / payload.path).resolve()
+    try:
+        target.relative_to(root.resolve())
+    except ValueError:
+        raise HTTPException(400, "非法路径")
+    if target.is_dir():
+        raise HTTPException(400, "目标是目录")
+    if not _is_editable(target):
+        raise HTTPException(400, f"文件类型不允许编辑: {target.suffix}")
+    if len(payload.content.encode("utf-8")) > 2 * 1024 * 1024:
+        raise HTTPException(400, "内容超过 2MB 限制")
+
+    # Static scan on the new content (markdown / yaml / shell patterns)
+    from ...services.skill_scan import _scan_text
+    findings = _scan_text(payload.content)
+    if findings:
+        await audit(db, actor.id, "skill.file_edit_blocked", target_type="skill", target_id=s.id,
+                    detail={"path": payload.path, "findings": findings[:10]})
+        await db.commit()
+        raise HTTPException(400, {"message": "内容触发安全规则,被拒绝", "findings": findings})
+
+    # Backup old content for audit
+    old = ""
+    if target.exists():
+        try:
+            old = target.read_text(encoding="utf-8")
+        except Exception:
+            old = ""
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(payload.content, encoding="utf-8")
+    new_size = target.stat().st_size
+
+    # Bump skill version so other layers know the bundle changed
+    s.version += 1
+    await audit(db, actor.id, "skill.file_edit", target_type="skill", target_id=s.id,
+                detail={"path": payload.path, "old_size": len(old.encode('utf-8')),
+                        "new_size": new_size})
+    await db.commit()
+    return {"ok": True, "path": payload.path, "size": new_size, "version": s.version}

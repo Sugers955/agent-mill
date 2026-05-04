@@ -1,6 +1,37 @@
 <template>
   <div class="page">
     <div class="page-head"><span class="page-title">日志</span></div>
+
+    <div class="filters">
+      <el-select
+        v-model="filterUserId"
+        placeholder="按用户筛选"
+        clearable
+        filterable
+        class="filter-select"
+        @change="onFilterChange"
+      >
+        <el-option
+          v-for="u in users"
+          :key="u.id"
+          :label="u.display_name ? `${u.display_name} (${u.username})` : u.username"
+          :value="u.id"
+        />
+      </el-select>
+      <el-select
+        v-if="tab === 'calls'"
+        v-model="filterAgentId"
+        placeholder="按智能体筛选"
+        clearable
+        filterable
+        class="filter-select"
+        @change="onFilterChange"
+      >
+        <el-option v-for="a in agents" :key="a.id" :label="a.name" :value="a.id" />
+      </el-select>
+      <el-button v-if="hasFilter" link type="primary" @click="clearFilters">清空筛选</el-button>
+    </div>
+
     <el-tabs v-model="tab">
       <el-tab-pane label="调用日志" name="calls">
         <el-table :data="calls.items" border v-loading="loading">
@@ -94,7 +125,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { api } from '@/api'
 
 const tab = ref('calls')
@@ -104,12 +135,31 @@ const loading = ref(false)
 const calls = ref<{ items: any[]; total: number }>({ items: [], total: 0 })
 const audits = ref<{ items: any[]; total: number }>({ items: [], total: 0 })
 
+const filterUserId = ref<number | null>(null)
+const filterAgentId = ref<number | null>(null)
+const users = ref<any[]>([])
+const agents = ref<any[]>([])
+
+const hasFilter = computed(() => filterUserId.value != null || filterAgentId.value != null)
+
 async function load() {
   loading.value = true
   try {
     const offset = (page.value - 1) * pageSize.value
-    if (tab.value === 'calls') calls.value = await api.callLogs(pageSize.value, offset)
-    else audits.value = await api.auditLogs(pageSize.value, offset)
+    if (tab.value === 'calls') {
+      calls.value = await api.callLogs({
+        limit: pageSize.value,
+        offset,
+        user_id: filterUserId.value ?? undefined,
+        agent_id: filterAgentId.value ?? undefined,
+      })
+    } else {
+      audits.value = await api.auditLogs({
+        limit: pageSize.value,
+        offset,
+        user_id: filterUserId.value ?? undefined,
+      })
+    }
   } finally {
     loading.value = false
   }
@@ -126,6 +176,18 @@ function onSizeChange(s: number) {
   load()
 }
 
+function onFilterChange() {
+  page.value = 1
+  load()
+}
+
+function clearFilters() {
+  filterUserId.value = null
+  filterAgentId.value = null
+  page.value = 1
+  load()
+}
+
 function fmtTime(s: string) {
   if (!s) return ''
   const d = new Date(s)
@@ -134,14 +196,30 @@ function fmtTime(s: string) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
 }
 
-onMounted(load)
+onMounted(async () => {
+  const [us, as] = await Promise.all([
+    api.users().catch(() => []),
+    api.agents().catch(() => []),
+  ])
+  users.value = us
+  agents.value = as
+  await load()
+})
+
 watch(tab, () => {
   page.value = 1
+  // agent filter doesn't apply to audit logs — drop it when switching to audit
+  if (tab.value === 'audit') filterAgentId.value = null
   load()
 })
 </script>
 
 <style scoped>
 .muted { color: var(--m-text-tertiary); }
+.filters {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 0 4px;
+}
+.filter-select { width: 240px; }
 .pager { display: flex; justify-content: flex-end; margin-top: 12px; }
 </style>

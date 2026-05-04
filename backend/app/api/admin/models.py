@@ -5,11 +5,12 @@ from sqlalchemy import select
 from ...db.session import get_db
 from ...db.models import Model
 from ...deps import require_admin_or_operator
+from ...services.audit import audit
+from ...db.models import User
 from ...core.crypto import encrypt_str
 from ...schemas import ModelIn, ModelOut
 
-router = APIRouter(prefix="/api/admin/models", tags=["admin-models"],
-                   dependencies=[Depends(require_admin_or_operator)])
+router = APIRouter(prefix="/api/admin/models", tags=["admin-models"])
 
 
 def _to_out(m: Model) -> ModelOut:
@@ -17,32 +18,35 @@ def _to_out(m: Model) -> ModelOut:
         id=m.id, code=m.code, provider=m.provider, model_id=m.model_id,
         base_url=m.base_url, max_tokens=m.max_tokens, enabled=m.enabled,
         has_api_key=bool(m.api_key_enc),
+        extra_params=m.extra_params_json or {},
     )
 
 
 @router.get("", response_model=list[ModelOut])
-async def list_models(db: AsyncSession = Depends(get_db)):
+async def list_models(db: AsyncSession = Depends(get_db), _=Depends(require_admin_or_operator)):
     rows = (await db.execute(select(Model).order_by(Model.id))).scalars().all()
     return [_to_out(r) for r in rows]
 
 
 @router.post("", response_model=ModelOut)
-async def create_model(payload: ModelIn, db: AsyncSession = Depends(get_db)):
+async def create_model(payload: ModelIn, db: AsyncSession = Depends(get_db), actor: User = Depends(require_admin_or_operator)):
     if (await db.execute(select(Model).where(Model.code == payload.code))).scalar_one_or_none():
         raise HTTPException(400, "code 已存在")
     m = Model(
         code=payload.code, provider=payload.provider, model_id=payload.model_id,
         base_url=payload.base_url, max_tokens=payload.max_tokens, enabled=payload.enabled,
         api_key_enc=encrypt_str(payload.api_key) if payload.api_key else None,
+        extra_params_json=payload.extra_params or {},
     )
     db.add(m)
+    await audit(db, actor.id, "model.create", target_type="model", target_id=None)
     await db.commit()
     await db.refresh(m)
     return _to_out(m)
 
 
 @router.patch("/{mid}", response_model=ModelOut)
-async def update_model(mid: int, payload: ModelIn, db: AsyncSession = Depends(get_db)):
+async def update_model(mid: int, payload: ModelIn, db: AsyncSession = Depends(get_db), actor: User = Depends(require_admin_or_operator)):
     m = (await db.execute(select(Model).where(Model.id == mid))).scalar_one_or_none()
     if not m:
         raise HTTPException(404, "不存在")
@@ -52,25 +56,28 @@ async def update_model(mid: int, payload: ModelIn, db: AsyncSession = Depends(ge
     m.base_url = payload.base_url
     m.max_tokens = payload.max_tokens
     m.enabled = payload.enabled
+    m.extra_params_json = payload.extra_params or {}
     if payload.api_key:
         m.api_key_enc = encrypt_str(payload.api_key)
+    await audit(db, actor.id, "model.update", target_type="model", target_id=m.id)
     await db.commit()
     await db.refresh(m)
     return _to_out(m)
 
 
 @router.delete("/{mid}")
-async def delete_model(mid: int, db: AsyncSession = Depends(get_db)):
+async def delete_model(mid: int, db: AsyncSession = Depends(get_db), actor: User = Depends(require_admin_or_operator)):
     m = (await db.execute(select(Model).where(Model.id == mid))).scalar_one_or_none()
     if not m:
         raise HTTPException(404, "不存在")
     await db.delete(m)
+    await audit(db, actor.id, "model.delete", target_type="model", target_id=m.id)
     await db.commit()
     return {"ok": True}
 
 
 @router.post("/{mid}/test")
-async def test_model(mid: int, db: AsyncSession = Depends(get_db)):
+async def test_model(mid: int, db: AsyncSession = Depends(get_db), actor: User = Depends(require_admin_or_operator)):
     """Send a test prompt and return the model's reply."""
     m = (await db.execute(select(Model).where(Model.id == mid))).scalar_one_or_none()
     if not m:
@@ -103,10 +110,13 @@ async def test_model(mid: int, db: AsyncSession = Depends(get_db)):
             base_url = m.base_url or AgentRunner.PROVIDER_BASE_URL.get(m.provider.lower())
             base_url = AgentRunner.normalize_base_url(base_url)
             client = AsyncOpenAI(api_key=api_key, base_url=base_url)
-            resp = await client.chat.completions.create(
-                model=m.model_id, max_tokens=512,
-                messages=[{"role": "user", "content": question}],
-            )
+            create_kwargs: dict = {
+                "model": m.model_id, "max_tokens": 512,
+                "messages": [{"role": "user", "content": question}],
+            }
+            if m.extra_params_json:
+                create_kwargs["extra_body"] = m.extra_params_json
+            resp = await client.chat.completions.create(**create_kwargs)
             text = resp.choices[0].message.content if resp.choices else ""
             usage = resp.usage
             return {"ok": True, "question": question, "answer": text,

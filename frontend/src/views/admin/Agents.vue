@@ -14,11 +14,27 @@
           <div style="font-size:12px;color:var(--m-text-secondary);font-family:'Roboto Mono',monospace">{{ row.code }}</div>
         </template>
       </el-table-column>
-      <el-table-column prop="description" label="描述" show-overflow-tooltip />
-      <el-table-column prop="enabled" label="启用" width="80">
+      <el-table-column prop="description" label="描述" show-overflow-tooltip min-width="180" />
+      <el-table-column label="默认模型" width="180" show-overflow-tooltip>
+        <template #default="{ row }">
+          <span v-if="row.default_model_id">{{ modelLabel(row.default_model_id) }}</span>
+          <span v-else class="muted">—</span>
+        </template>
+      </el-table-column>
+      <el-table-column label="技能" width="80" align="center">
+        <template #default="{ row }">
+          <span :class="{ muted: !row.skill_ids?.length }">{{ row.skill_ids?.length || 0 }}</span>
+        </template>
+      </el-table-column>
+      <el-table-column label="MCP" width="80" align="center">
+        <template #default="{ row }">
+          <span :class="{ muted: !row.mcp_ids?.length }">{{ row.mcp_ids?.length || 0 }}</span>
+        </template>
+      </el-table-column>
+      <el-table-column label="启用" width="80">
         <template #default="{ row }"><el-tag :type="row.enabled ? 'success' : 'info'">{{ row.enabled ? '是' : '否' }}</el-tag></template>
       </el-table-column>
-      <el-table-column label="操作" width="200">
+      <el-table-column label="操作" width="160" fixed="right">
         <template #default="{ row }">
           <el-button size="small" text @click="openEdit(row)">编辑</el-button>
           <el-button size="small" text type="danger" @click="onDelete(row)">删除</el-button>
@@ -104,6 +120,11 @@ async function load() {
 }
 onMounted(load)
 
+function modelLabel(id: number) {
+  const m = models.value.find((x: any) => x.id === id)
+  return m ? (m.code || m.model_id || `#${id}`) : `#${id}`
+}
+
 function openCreate() {
   editing.value = null
   Object.assign(form, emptyForm())
@@ -129,3 +150,7 @@ async function onDelete(row: any) {
   try { await ElMessageBox.confirm(`删除 ${row.code}?`, '确认', { type: 'warning' }); await api.deleteAgent(row.id); await load() } catch {}
 }
 </script>
+
+<style scoped>
+.muted { color: var(--m-text-tertiary); }
+</style>

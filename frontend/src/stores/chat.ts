@@ -28,6 +28,16 @@ export const useChat = defineStore('chat', {
     selectAgent(a: any) {
       this.currentAgent = a
     },
+    reset() {
+      this.agents = []
+      this.defaultAgent = null
+      this.currentAgent = null
+      this.convs = []
+      this.currentConvId = null
+      this.messages = []
+      this.pendingFiles = []
+      this.loaded = false
+    },
     async newConv() {
       if (!this.currentAgent) return null
       const c = await api.createConversation(this.currentAgent.id)

@@ -22,9 +22,12 @@ DEFAULT_ROLES = [
 async def main():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-        # idempotent column add for existing installations
+        # idempotent column adds for existing installations
         await conn.exec_driver_sql(
             "ALTER TABLE agents ADD COLUMN IF NOT EXISTS is_default BOOLEAN NOT NULL DEFAULT false"
+        )
+        await conn.exec_driver_sql(
+            "ALTER TABLE models ADD COLUMN IF NOT EXISTS extra_params_json JSONB NOT NULL DEFAULT '{}'::jsonb"
         )
     async with SessionLocal() as db:
         # roles

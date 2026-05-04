@@ -5,48 +5,52 @@ from sqlalchemy import select
 from ...db.session import get_db
 from ...db.models import MCPConnector
 from ...deps import require_admin_or_operator
+from ...services.audit import audit
+from ...db.models import User
 from ...schemas import MCPIn, MCPOut
 
-router = APIRouter(prefix="/api/admin/mcp", tags=["admin-mcp"],
-                   dependencies=[Depends(require_admin_or_operator)])
+router = APIRouter(prefix="/api/admin/mcp", tags=["admin-mcp"])
 
 
 @router.get("", response_model=list[MCPOut])
-async def list_mcp(db: AsyncSession = Depends(get_db)):
+async def list_mcp(db: AsyncSession = Depends(get_db), _=Depends(require_admin_or_operator)):
     return (await db.execute(select(MCPConnector).order_by(MCPConnector.id))).scalars().all()
 
 
 @router.post("", response_model=MCPOut)
-async def create_mcp(payload: MCPIn, db: AsyncSession = Depends(get_db)):
+async def create_mcp(payload: MCPIn, db: AsyncSession = Depends(get_db), actor: User = Depends(require_admin_or_operator)):
     if (await db.execute(select(MCPConnector).where(MCPConnector.name == payload.name))).scalar_one_or_none():
         raise HTTPException(400, "名称已存在")
     m = MCPConnector(**payload.model_dump())
+    await audit(db, actor.id, "mcp.create", target_type="mcp", target_id=None)
     db.add(m); await db.commit(); await db.refresh(m)
     return m
 
 
 @router.patch("/{mid}", response_model=MCPOut)
-async def update_mcp(mid: int, payload: MCPIn, db: AsyncSession = Depends(get_db)):
+async def update_mcp(mid: int, payload: MCPIn, db: AsyncSession = Depends(get_db), actor: User = Depends(require_admin_or_operator)):
     m = (await db.execute(select(MCPConnector).where(MCPConnector.id == mid))).scalar_one_or_none()
     if not m:
         raise HTTPException(404, "不存在")
     for k, v in payload.model_dump().items():
         setattr(m, k, v)
+    await audit(db, actor.id, "mcp.update", target_type="mcp", target_id=m.id)
     await db.commit(); await db.refresh(m)
     return m
 
 
 @router.delete("/{mid}")
-async def delete_mcp(mid: int, db: AsyncSession = Depends(get_db)):
+async def delete_mcp(mid: int, db: AsyncSession = Depends(get_db), actor: User = Depends(require_admin_or_operator)):
     m = (await db.execute(select(MCPConnector).where(MCPConnector.id == mid))).scalar_one_or_none()
     if not m:
         raise HTTPException(404, "不存在")
+    await audit(db, actor.id, "mcp.delete", target_type="mcp", target_id=m.id)
     await db.delete(m); await db.commit()
     return {"ok": True}
 
 
 @router.post("/{mid}/ping")
-async def ping_mcp(mid: int, db: AsyncSession = Depends(get_db)):
+async def ping_mcp(mid: int, db: AsyncSession = Depends(get_db), actor: User = Depends(require_admin_or_operator)):
     m = (await db.execute(select(MCPConnector).where(MCPConnector.id == mid))).scalar_one_or_none()
     if not m:
         raise HTTPException(404, "不存在")
@@ -59,7 +63,7 @@ async def ping_mcp(mid: int, db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/{mid}/tools")
-async def get_mcp_tools(mid: int, db: AsyncSession = Depends(get_db)):
+async def get_mcp_tools(mid: int, db: AsyncSession = Depends(get_db), _=Depends(require_admin_or_operator)):
     m = (await db.execute(select(MCPConnector).where(MCPConnector.id == mid))).scalar_one_or_none()
     if not m:
         raise HTTPException(404, "不存在")

@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { api } from '@/api'
+import { useChat } from './chat'
 
 export const useAuth = defineStore('auth', {
   state: () => ({ user: null as any | null }),
@@ -13,6 +14,7 @@ export const useAuth = defineStore('auth', {
       const res = await api.login(username, password)
       localStorage.setItem('access_token', res.access_token)
       localStorage.setItem('refresh_token', res.refresh_token)
+      useChat().reset()
       await this.fetchMe()
     },
     async fetchMe() {
@@ -22,6 +24,7 @@ export const useAuth = defineStore('auth', {
       localStorage.removeItem('access_token')
       localStorage.removeItem('refresh_token')
       this.user = null
+      useChat().reset()
     },
   },
 })

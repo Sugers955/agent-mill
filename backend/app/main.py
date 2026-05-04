@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from .core.config import settings
 from .api import auth, chat, files
+from .api import downloads as downloads_api
 from .api.admin import users as admin_users, models as admin_models, mcp as admin_mcp, \
     skills as admin_skills, agents as admin_agents, logs as admin_logs
 
@@ -27,6 +28,7 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(chat.router)
 app.include_router(files.router)
+app.include_router(downloads_api.router)
 app.include_router(admin_users.router)
 app.include_router(admin_models.router)
 app.include_router(admin_mcp.router)

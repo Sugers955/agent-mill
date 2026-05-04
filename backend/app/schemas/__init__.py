@@ -64,6 +64,7 @@ class ModelIn(BaseModel):
     api_key: str | None = None
     max_tokens: int = 8192
     enabled: bool = True
+    extra_params: dict[str, Any] = Field(default_factory=dict)
 
 
 class ModelOut(ORM):
@@ -75,6 +76,7 @@ class ModelOut(ORM):
     max_tokens: int
     enabled: bool
     has_api_key: bool
+    extra_params: dict[str, Any] = Field(default_factory=dict)
 
 
 # ---------- MCP ----------

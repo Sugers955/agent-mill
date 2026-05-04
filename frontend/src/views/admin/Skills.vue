@@ -67,8 +67,42 @@
             <div class="content-head">
               <code>{{ currentFile.path }}</code>
               <span class="muted">{{ formatSize(currentFile.size) }}</span>
+              <div class="head-actions">
+                <template v-if="!editingFile">
+                  <el-button v-if="currentFile.editable" size="small" type="primary" plain @click="startEdit">
+                    <el-icon><EditPen /></el-icon>编辑
+                  </el-button>
+                  <el-tooltip v-else content="该文件类型不允许在线编辑" placement="top">
+                    <el-button size="small" disabled>
+                      <el-icon><Lock /></el-icon>只读
+                    </el-button>
+                  </el-tooltip>
+                </template>
+                <template v-else>
+                  <el-button size="small" @click="cancelEdit">取消</el-button>
+                  <el-button size="small" type="primary" :loading="saving" @click="saveEdit"
+                             :disabled="editBuffer === currentFile.content">
+                    <el-icon><Check /></el-icon>保存
+                  </el-button>
+                </template>
+              </div>
             </div>
-            <div class="code-viewer">
+            <div v-if="editingFile" class="editor-wrap">
+              <textarea
+                ref="editorRef"
+                v-model="editBuffer"
+                class="editor-area"
+                spellcheck="false"
+                @keydown.tab.prevent="onTab"
+                @keydown.ctrl.s.prevent="saveEdit"
+                @keydown.meta.s.prevent="saveEdit"
+              />
+              <div class="editor-footer">
+                <span class="muted">{{ editBuffer.length }} 字符 · {{ editBuffer.split('\n').length }} 行</span>
+                <span class="muted">Ctrl/Cmd + S 保存</span>
+              </div>
+            </div>
+            <div v-else class="code-viewer">
               <div class="line-numbers">
                 <div v-for="n in lineCount" :key="n">{{ n }}</div>
               </div>
@@ -148,7 +182,7 @@
   </div>
 </template>
 <script setup lang="ts">
-import { ref, onMounted, reactive, computed } from 'vue'
+import { ref, onMounted, reactive, computed, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { api } from '@/api'
 
@@ -231,6 +265,10 @@ const detailVisible = ref(false)
 const detailRow = ref<any>(null)
 const tree = ref<any>(null)
 const currentFile = ref<any>(null)
+const editingFile = ref(false)
+const editBuffer = ref('')
+const saving = ref(false)
+const editorRef = ref<HTMLTextAreaElement | null>(null)
 const detailTitle = computed(() => detailRow.value ? `${detailRow.value.name} · 详情` : '详情')
 const lineCount = computed(() => {
   if (!currentFile.value?.content) return 0
@@ -241,9 +279,9 @@ async function openDetail(row: any) {
   detailRow.value = row
   detailVisible.value = true
   currentFile.value = null
+  editingFile.value = false
   try {
     tree.value = await api.skillFiles(row.id)
-    // auto-open SKILL.md if exists
     const skillMd = (tree.value.tree || []).find((n: any) => n.type === 'file' && n.name.toLowerCase() === 'skill.md')
     if (skillMd) await loadFile(skillMd.path)
   } catch {}
@@ -254,7 +292,58 @@ async function onNodeClick(data: any) {
 }
 async function loadFile(path: string) {
   if (!detailRow.value) return
+  if (editingFile.value && editBuffer.value !== currentFile.value?.content) {
+    try {
+      await ElMessageBox.confirm('当前文件未保存,切换会丢失修改,继续?', '确认', { type: 'warning' })
+    } catch { return }
+  }
+  editingFile.value = false
   try { currentFile.value = await api.skillFile(detailRow.value.id, path) } catch {}
+}
+
+function startEdit() {
+  if (!currentFile.value?.editable) return
+  editBuffer.value = currentFile.value.content || ''
+  editingFile.value = true
+  nextTick().then(() => editorRef.value?.focus())
+}
+
+function cancelEdit() {
+  if (editBuffer.value !== currentFile.value?.content) {
+    if (!confirm('放弃本次修改?')) return
+  }
+  editingFile.value = false
+}
+
+function onTab(e: KeyboardEvent) {
+  const ta = editorRef.value
+  if (!ta) return
+  const start = ta.selectionStart
+  const end = ta.selectionEnd
+  editBuffer.value = editBuffer.value.slice(0, start) + '  ' + editBuffer.value.slice(end)
+  nextTick().then(() => {
+    if (editorRef.value) editorRef.value.selectionStart = editorRef.value.selectionEnd = start + 2
+  })
+}
+
+async function saveEdit() {
+  if (!currentFile.value || !detailRow.value) return
+  if (editBuffer.value === currentFile.value.content) return
+  saving.value = true
+  try {
+    await api.saveSkillFile(detailRow.value.id, currentFile.value.path, editBuffer.value)
+    ElMessage.success('保存成功')
+    currentFile.value = await api.skillFile(detailRow.value.id, currentFile.value.path)
+    editingFile.value = false
+    await load()
+  } catch (e: any) {
+    const detail = e?.response?.data?.detail
+    if (detail && typeof detail === 'object' && detail.findings) {
+      ElMessage.error(`内容触发安全规则: ${detail.findings.map((f: any) => f.rule).join(', ')}`)
+    }
+  } finally {
+    saving.value = false
+  }
 }
 function formatSize(b: number) {
   if (b < 1024) return `${b} B`
@@ -315,6 +404,7 @@ async function onUploadSubmit() {
   border-bottom: 1px solid var(--m-border);
   font-size: 13px;
 }
+.content-head .head-actions { margin-left: auto; display: flex; gap: 6px; }
 .code-viewer {
   flex: 1; overflow: auto; display: flex;
   background: #fafbfc;
@@ -331,5 +421,28 @@ async function onUploadSubmit() {
   flex: 1; margin: 0; padding: 16px;
   white-space: pre; overflow: auto;
   color: var(--m-text);
+}
+
+/* in-place editor */
+.editor-wrap {
+  flex: 1; display: flex; flex-direction: column; min-height: 0;
+  background: var(--m-surface);
+}
+.editor-area {
+  flex: 1; min-height: 0; resize: none;
+  border: none; outline: none; padding: 16px;
+  font-family: 'Roboto Mono', ui-monospace, Menlo, monospace;
+  font-size: 13px; line-height: 1.65;
+  color: var(--m-text); background: #fafbfc;
+  white-space: pre; overflow: auto;
+  tab-size: 2;
+}
+.editor-area:focus { background: #fff; box-shadow: inset 2px 0 0 var(--m-primary); }
+.editor-footer {
+  display: flex; justify-content: space-between;
+  padding: 8px 16px;
+  font-size: 11px; color: var(--m-text-secondary);
+  background: var(--m-bg-soft);
+  border-top: 1px solid var(--m-border);
 }
 </style>

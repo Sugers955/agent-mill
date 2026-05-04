@@ -121,7 +121,7 @@
           :class="['agent-item', { active: a.id === chat.currentAgent?.id }]"
           @click="onPickAgent(a)"
         >
-          <div class="agent-icon">{{ (a.name || '?').slice(0, 1) }}</div>
+          <div class="agent-icon"><el-icon :size="18"><Promotion /></el-icon></div>
           <div class="agent-meta">
             <div class="agent-row">
               <span class="agent-name">{{ a.name }}</span>
@@ -129,6 +129,91 @@
               <el-icon v-if="a.id === chat.currentAgent?.id" class="agent-check"><Check /></el-icon>
             </div>
             <div class="agent-desc">{{ a.description || a.code || '暂无介绍' }}</div>
+
+            <div class="agent-caps" @click.stop>
+              <!-- Model -->
+              <span class="cap-item">
+                <el-icon :size="13"><Cpu /></el-icon>
+                <span class="cap-label">模型:</span>
+                <span class="cap-value">{{ capModel(a.id) }}</span>
+              </span>
+
+              <!-- Skills popover -->
+              <el-popover
+                placement="right-start"
+                :width="320"
+                trigger="click"
+                @before-enter="ensureCaps(a.id)"
+              >
+                <template #reference>
+                  <a class="cap-link" @click.stop>
+                    <el-icon :size="13"><MagicStick /></el-icon>
+                    技能 ({{ a.skill_ids?.length || 0 }})
+                  </a>
+                </template>
+                <div class="pop-body">
+                  <div class="pop-title">技能 ({{ a.skill_ids?.length || 0 }})</div>
+                  <div v-if="capsLoading[a.id]" class="pop-empty">加载中…</div>
+                  <div v-else-if="!caps[a.id]?.skills?.length" class="pop-empty">未挂载技能</div>
+                  <div v-else class="pop-list">
+                    <div v-for="s in caps[a.id].skills" :key="s.id" class="pop-row">
+                      <div class="pop-row-head">
+                        <span class="pop-name">{{ s.name }}</span>
+                        <el-tag size="small" effect="light">{{ s.type }}</el-tag>
+                      </div>
+                      <div class="pop-desc">{{ s.description || s.code || '暂无描述' }}</div>
+                    </div>
+                  </div>
+                </div>
+              </el-popover>
+
+              <!-- MCP popover -->
+              <el-popover
+                placement="right-start"
+                :width="380"
+                trigger="click"
+                @before-enter="ensureCaps(a.id)"
+              >
+                <template #reference>
+                  <a class="cap-link" @click.stop>
+                    <el-icon :size="13"><Connection /></el-icon>
+                    MCP ({{ a.mcp_ids?.length || 0 }})
+                  </a>
+                </template>
+                <div class="pop-body">
+                  <div class="pop-title">MCP 工具 ({{ a.mcp_ids?.length || 0 }})</div>
+                  <div v-if="capsLoading[a.id]" class="pop-empty">加载中…</div>
+                  <div v-else-if="!caps[a.id]?.mcps?.length" class="pop-empty">未挂载 MCP</div>
+                  <div v-else class="pop-list">
+                    <div v-for="m in caps[a.id].mcps" :key="m.id" class="pop-row">
+                      <div class="pop-row-head">
+                        <span class="pop-name">{{ m.name }}</span>
+                        <el-tag size="small" effect="light">{{ m.transport }}</el-tag>
+                        <span class="pop-row-actions">
+                          <a v-if="!mcpTools[mcpKey(a.id, m.id)] && !mcpToolsLoading[mcpKey(a.id, m.id)]"
+                             class="cap-link cap-link-sm" @click.stop="openMcpTools(a.id, m.id)">查看工具</a>
+                          <a v-else-if="mcpTools[mcpKey(a.id, m.id)]"
+                             class="cap-link cap-link-sm" @click.stop="toggleMcpTools(a.id, m.id)">
+                             {{ mcpToolsExpanded[mcpKey(a.id, m.id)] ? '收起' : '展开' }}
+                          </a>
+                          <a v-if="mcpTools[mcpKey(a.id, m.id)]"
+                             class="cap-link cap-link-sm" @click.stop="loadMcpTools(a.id, m.id)">刷新</a>
+                        </span>
+                      </div>
+                      <div v-if="mcpToolsLoading[mcpKey(a.id, m.id)]" class="pop-desc">连接中…</div>
+                      <div v-else-if="mcpToolsError[mcpKey(a.id, m.id)]" class="pop-desc err">{{ mcpToolsError[mcpKey(a.id, m.id)] }}</div>
+                      <div v-else-if="mcpTools[mcpKey(a.id, m.id)] && mcpToolsExpanded[mcpKey(a.id, m.id)]" class="mcp-tools">
+                        <div v-if="!mcpTools[mcpKey(a.id, m.id)].length" class="pop-desc">该 MCP 没有可用工具</div>
+                        <div v-for="t in mcpTools[mcpKey(a.id, m.id)]" :key="t.name" class="mcp-tool">
+                          <code class="mcp-tool-name">{{ t.name }}</code>
+                          <span v-if="t.description" class="mcp-tool-desc">— {{ t.description }}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </el-popover>
+            </div>
           </div>
         </div>
       </div>
@@ -137,10 +222,19 @@
     <!-- Main -->
     <div class="main">
       <header class="topbar">
-        <div></div>
+        <div class="topbar-left">
+          <div v-if="route.path === '/chat' && chat.currentAgent" class="agent-chip" @click="togglePanel('agent')">
+            <div class="agent-chip-icon"><el-icon :size="14"><Promotion /></el-icon></div>
+            <div class="agent-chip-meta">
+              <span class="agent-chip-label">当前智能体</span>
+              <span class="agent-chip-name">{{ chat.currentAgent.name }}</span>
+            </div>
+            <el-icon class="agent-chip-arrow"><ArrowDown /></el-icon>
+          </div>
+        </div>
         <el-dropdown trigger="click">
           <div class="user-chip">
-            <div class="avatar">{{ initial }}</div>
+            <div class="avatar"><el-icon :size="16"><UserFilled /></el-icon></div>
             <div class="user-meta">
               <div class="name">{{ auth.user?.display_name || auth.user?.username }}</div>
               <div class="role">{{ auth.user?.role?.name }}</div>
@@ -162,22 +256,74 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, onMounted, reactive } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
+import { api } from '@/api'
 import { useAuth } from '@/stores/auth'
 import { useChat } from '@/stores/chat'
 
 const router = useRouter()
+const route = useRoute()
 const auth = useAuth()
 const chat = useChat()
 
 const subPanel = ref<'history' | 'agent' | null>(null)
 
-const initial = computed(() => {
-  const n = auth.user?.display_name || auth.user?.username || '?'
-  return n.slice(0, 1).toUpperCase()
-})
+// per-agent capability cache (model + skills + mcps), populated lazily on popover open
+const caps = reactive<Record<number, any>>({})
+const capsLoading = reactive<Record<number, boolean>>({})
+// per-(agent,mcp) tool cache, populated only when user clicks "查看工具"
+const mcpTools = reactive<Record<string, any[]>>({})
+const mcpToolsLoading = reactive<Record<string, boolean>>({})
+const mcpToolsError = reactive<Record<string, string>>({})
+const mcpToolsExpanded = reactive<Record<string, boolean>>({})
+const mcpKey = (aid: number, mid: number) => `${aid}:${mid}`
+
+async function ensureCaps(agentId: number) {
+  if (caps[agentId] || capsLoading[agentId]) return
+  capsLoading[agentId] = true
+  try {
+    caps[agentId] = await api.agentCapabilities(agentId)
+  } catch {
+    caps[agentId] = { model: null, skills: [], mcps: [] }
+  } finally {
+    capsLoading[agentId] = false
+  }
+}
+
+function capModel(agentId: number) {
+  const c = caps[agentId]
+  if (!c) return capsLoading[agentId] ? '…' : '点击加载'
+  const m = c.model
+  if (!m) return '未配置'
+  return m.code || m.model_id || `#${m.id}`
+}
+
+async function loadMcpTools(agentId: number, mcpId: number) {
+  const k = mcpKey(agentId, mcpId)
+  if (mcpToolsLoading[k]) return
+  mcpToolsLoading[k] = true
+  delete mcpToolsError[k]
+  try {
+    const info = await api.agentMcpTools(agentId, mcpId)
+    mcpTools[k] = info.tools || []
+    mcpToolsExpanded[k] = true
+  } catch (e: any) {
+    mcpToolsError[k] = e?.response?.data?.detail || e?.message || '加载失败'
+  } finally {
+    mcpToolsLoading[k] = false
+  }
+}
+
+function openMcpTools(agentId: number, mcpId: number) {
+  loadMcpTools(agentId, mcpId)
+}
+
+function toggleMcpTools(agentId: number, mcpId: number) {
+  const k = mcpKey(agentId, mcpId)
+  mcpToolsExpanded[k] = !mcpToolsExpanded[k]
+}
 
 onMounted(() => {
   if (!chat.loaded) chat.loadInit()
@@ -186,6 +332,9 @@ onMounted(() => {
 function togglePanel(name: 'history' | 'agent') {
   if (!auth.canManage && name === 'history') return
   subPanel.value = subPanel.value === name ? null : name
+  if (subPanel.value === 'agent') {
+    chat.agents.forEach((a) => ensureCaps(a.id))
+  }
 }
 
 async function onNewConv() {
@@ -370,11 +519,19 @@ function onLogout() {
 .agent-item:hover { background: var(--m-surface-variant); }
 .agent-item.active { background: var(--m-primary-soft); }
 .agent-icon {
-  width: 36px; height: 36px; border-radius: 50%;
-  background: linear-gradient(135deg, #4285f4, #34a853);
-  color: #fff; font-weight: 600; font-size: 14px;
+  width: 36px; height: 36px; border-radius: 10px;
+  background: var(--m-bg-soft);
+  border: 1px solid var(--m-border);
+  color: var(--m-text-secondary);
   display: flex; align-items: center; justify-content: center;
   flex-shrink: 0;
+  transition: color .15s ease, border-color .15s ease, background .15s ease;
+}
+.agent-item:hover .agent-icon { color: var(--m-text); }
+.agent-item.active .agent-icon {
+  color: var(--m-primary);
+  background: var(--m-primary-soft);
+  border-color: var(--m-primary);
 }
 .agent-meta { flex: 1; min-width: 0; }
 .agent-row { display: flex; align-items: center; gap: 6px; }
@@ -387,6 +544,78 @@ function onLogout() {
   word-break: break-word;
 }
 
+.agent-caps {
+  margin-top: 8px;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px;
+  font-size: 12px;
+}
+.cap-item {
+  display: inline-flex; align-items: center; gap: 4px;
+  color: var(--m-text-secondary);
+}
+.cap-label { color: var(--m-text-tertiary); }
+.cap-value { color: var(--m-text); font-weight: 500; }
+.cap-link {
+  display: inline-flex; align-items: center; gap: 4px;
+  color: var(--m-primary);
+  cursor: pointer;
+  text-decoration: none;
+}
+.cap-link:hover { text-decoration: underline; }
+.cap-link-sm { font-size: 11px; }
+
+/* ---------- Capability popover content ---------- */
+.pop-body {
+  font-size: 13px;
+  max-height: 60vh;
+  overflow: auto;
+  padding-right: 4px;
+}
+.pop-title {
+  font-size: 12px; font-weight: 600;
+  color: var(--m-text-secondary);
+  text-transform: uppercase; letter-spacing: .06em;
+  margin-bottom: 8px;
+}
+.pop-empty { color: var(--m-text-tertiary); font-size: 12px; padding: 4px 0; }
+.pop-list { display: flex; flex-direction: column; gap: 10px; }
+.pop-row {
+  padding: 8px 10px;
+  background: var(--m-bg-soft);
+  border-radius: var(--m-radius);
+}
+.pop-row-head {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 13px;
+}
+.pop-row-actions {
+  margin-left: auto;
+  display: inline-flex; align-items: center; gap: 8px;
+}
+.pop-name { font-weight: 500; color: var(--m-text); }
+.pop-desc {
+  margin-top: 4px;
+  font-size: 12px; line-height: 1.5;
+  color: var(--m-text-secondary);
+  word-break: break-word;
+}
+.pop-desc.err { color: var(--m-danger, #d33); }
+.mcp-tools {
+  margin-top: 6px;
+  display: flex; flex-direction: column; gap: 4px;
+  max-height: 240px;
+  overflow: auto;
+  padding-right: 4px;
+}
+.mcp-tool { font-size: 12px; line-height: 1.5; }
+.mcp-tool-name {
+  background: var(--m-surface-variant);
+  padding: 1px 6px; border-radius: 4px;
+  font-family: 'Roboto Mono', monospace;
+  font-size: 11.5px; color: var(--m-text);
+}
+.mcp-tool-desc { color: var(--m-text-secondary); margin-left: 4px; }
+
 /* ---------- Main ---------- */
 .main { flex: 1; display: flex; flex-direction: column; min-width: 0; background: var(--m-surface); }
 .topbar {
@@ -395,6 +624,40 @@ function onLogout() {
   padding: 0 24px;
   background: var(--m-surface);
 }
+.topbar-left { display: flex; align-items: center; min-width: 0; }
+
+.agent-chip {
+  display: inline-flex; align-items: center; gap: 10px;
+  padding: 6px 12px 6px 6px;
+  background: var(--m-bg-soft);
+  border-radius: var(--m-radius-pill);
+  cursor: pointer;
+  transition: background .15s ease;
+  max-width: 100%;
+}
+.agent-chip:hover { background: var(--m-surface-variant); }
+.agent-chip-icon {
+  width: 28px; height: 28px; border-radius: 8px;
+  background: var(--m-surface);
+  border: 1px solid var(--m-border);
+  color: var(--m-primary);
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.agent-chip-meta {
+  display: flex; flex-direction: column; line-height: 1.15; min-width: 0;
+}
+.agent-chip-label {
+  font-size: 10px; font-weight: 500;
+  color: var(--m-text-tertiary);
+  text-transform: uppercase; letter-spacing: .06em;
+}
+.agent-chip-name {
+  font-size: 13px; font-weight: 600; color: var(--m-text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  max-width: 240px;
+}
+.agent-chip-arrow { color: var(--m-text-tertiary); }
 
 .user-chip {
   display:flex; align-items:center; gap: 10px;
@@ -406,8 +669,9 @@ function onLogout() {
 .user-chip:hover { background: var(--m-surface-variant); }
 .avatar {
   width: 32px; height: 32px; border-radius: 50%;
-  background: linear-gradient(135deg, #4285f4 0%, #34a853 100%);
-  color: #fff; font-weight: 600; font-size: 13px;
+  background: var(--m-bg-soft);
+  border: 1px solid var(--m-border);
+  color: var(--m-text-secondary);
   display:flex; align-items:center; justify-content:center;
 }
 .user-meta { line-height: 1.1; }

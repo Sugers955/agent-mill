@@ -9,6 +9,10 @@ export const api = {
   // chat
   myAgents: () => http.get('/api/agents').then((r) => r.data),
   myDefaultAgent: () => http.get('/api/agents/default').then((r) => r.data),
+  agentCapabilities: (agent_id: number) =>
+    http.get(`/api/agents/${agent_id}/capabilities`).then((r) => r.data),
+  agentMcpTools: (agent_id: number, mcp_id: number) =>
+    http.get(`/api/agents/${agent_id}/mcps/${mcp_id}/tools`).then((r) => r.data),
   conversations: () => http.get('/api/conversations').then((r) => r.data),
   createConversation: (agent_id?: number, title?: string) =>
     http.post('/api/conversations', { agent_id, title }).then((r) => r.data),
@@ -61,6 +65,8 @@ export const api = {
   skillFiles: (id: number) => http.get(`/api/admin/skills/${id}/files`).then((r) => r.data),
   skillFile: (id: number, path: string) =>
     http.get(`/api/admin/skills/${id}/file`, { params: { path } }).then((r) => r.data),
+  saveSkillFile: (id: number, path: string, content: string) =>
+    http.put(`/api/admin/skills/${id}/file`, { path, content }).then((r) => r.data),
 
   agents: () => http.get('/api/admin/agents').then((r) => r.data),
   agent: (id: number) => http.get(`/api/admin/agents/${id}`).then((r) => r.data),
@@ -68,8 +74,8 @@ export const api = {
   updateAgent: (id: number, p: any) => http.patch(`/api/admin/agents/${id}`, p).then((r) => r.data),
   deleteAgent: (id: number) => http.delete(`/api/admin/agents/${id}`).then((r) => r.data),
 
-  callLogs: (limit = 20, offset = 0) =>
-    http.get('/api/admin/logs/calls', { params: { limit, offset } }).then((r) => r.data),
-  auditLogs: (limit = 20, offset = 0) =>
-    http.get('/api/admin/logs/audit', { params: { limit, offset } }).then((r) => r.data),
+  callLogs: (params: { limit?: number; offset?: number; user_id?: number; agent_id?: number } = {}) =>
+    http.get('/api/admin/logs/calls', { params: { limit: 20, offset: 0, ...params } }).then((r) => r.data),
+  auditLogs: (params: { limit?: number; offset?: number; user_id?: number } = {}) =>
+    http.get('/api/admin/logs/audit', { params: { limit: 20, offset: 0, ...params } }).then((r) => r.data),
 }

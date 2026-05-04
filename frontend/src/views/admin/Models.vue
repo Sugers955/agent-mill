@@ -88,6 +88,23 @@
         </el-form-item>
         <el-form-item label="API Key"><el-input v-model="form.api_key" :placeholder="editing ? '留空则不改' : '从供应商控制台获取'" show-password /></el-form-item>
         <el-form-item label="Max Tokens"><el-input-number v-model="form.max_tokens" :min="1024" :max="200000" :step="1024" /></el-form-item>
+
+        <el-form-item label="高级参数">
+          <div style="display:flex;gap:6px;margin-bottom:6px;flex-wrap:wrap">
+            <el-button size="small" @click="applyPreset('disable_thinking')">关闭思考</el-button>
+            <el-button size="small" @click="applyPreset('enable_thinking')">开启思考</el-button>
+            <el-button size="small" @click="extraText = '{}'">清空</el-button>
+          </div>
+          <el-input v-model="extraText" type="textarea" :rows="4"
+                    placeholder='额外参数 JSON,会作为 extra_body 透传给模型 API。例如关闭思考: {"enable_thinking": false}' />
+          <div style="font-size:12px;color:var(--m-text-secondary);margin-top:4px">
+            常见关思考写法 ——
+            <strong>Qwen3</strong>: <code>{"enable_thinking": false}</code> ·
+            <strong>DeepSeek V3.2/V4 hybrid</strong>: <code>{"thinking": {"type": "disabled"} }</code> ·
+            <strong>GLM-4.5</strong>: <code>{"thinking": {"type": "disabled"} }</code>
+          </div>
+        </el-form-item>
+
         <el-form-item label="启用"><el-switch v-model="form.enabled" /></el-form-item>
       </el-form>
       <template #footer>
@@ -119,7 +136,32 @@ const editing = ref<any | null>(null)
 const form = reactive<any>(emptyForm())
 
 function emptyForm() {
-  return { code: '', provider: 'anthropic', model_id: '', base_url: '', api_key: '', max_tokens: 8192, enabled: true }
+  return { code: '', provider: 'anthropic', model_id: '', base_url: '', api_key: '', max_tokens: 8192, enabled: true, extra_params: {} }
+}
+
+const extraText = ref('{}')
+
+const DISABLE_THINKING_PRESETS: Record<string, any> = {
+  qwen: { enable_thinking: false },
+  deepseek: { thinking: { type: 'disabled' } },
+  glm: { thinking: { type: 'disabled' } },
+  anthropic: { thinking: { type: 'disabled' } },
+  openai: {},
+  'openai-compatible': { enable_thinking: false },
+}
+const ENABLE_THINKING_PRESETS: Record<string, any> = {
+  qwen: { enable_thinking: true },
+  deepseek: { thinking: { type: 'enabled' } },
+  glm: { thinking: { type: 'enabled' } },
+  anthropic: { thinking: { type: 'enabled' } },
+  openai: {},
+  'openai-compatible': { enable_thinking: true },
+}
+
+function applyPreset(kind: 'disable_thinking' | 'enable_thinking') {
+  const map = kind === 'disable_thinking' ? DISABLE_THINKING_PRESETS : ENABLE_THINKING_PRESETS
+  const preset = map[form.provider] || {}
+  extraText.value = JSON.stringify(preset, null, 2)
 }
 
 const presetBase = computed(() => PROVIDER_MAP[form.provider]?.base || '')
@@ -135,8 +177,13 @@ function providerTagType(v: string) {
 async function load() { rows.value = await api.models() }
 onMounted(load)
 
-function openCreate() { editing.value = null; Object.assign(form, emptyForm()); visible.value = true }
-function openEdit(row: any) { editing.value = row; Object.assign(form, { ...row, api_key: '' }); visible.value = true }
+function openCreate() { editing.value = null; Object.assign(form, emptyForm()); extraText.value = '{}'; visible.value = true }
+function openEdit(row: any) {
+  editing.value = row
+  Object.assign(form, { ...row, api_key: '' })
+  extraText.value = JSON.stringify(row.extra_params || {}, null, 2)
+  visible.value = true
+}
 
 function onProviderSelect(v: string) {
   form.provider = v
@@ -148,7 +195,10 @@ function onProviderSelect(v: string) {
 
 async function onSubmit() {
   if (!form.code || !form.model_id) { ElMessage.error('请填写编码和模型 ID'); return }
-  const payload: any = { ...form }
+  let parsedExtra: any = {}
+  try { parsedExtra = JSON.parse(extraText.value || '{}') }
+  catch { ElMessage.error('高级参数 JSON 格式错误'); return }
+  const payload: any = { ...form, extra_params: parsedExtra }
   if (editing.value && !payload.api_key) delete payload.api_key
   if (editing.value) await api.updateModel(editing.value.id, payload)
   else await api.createModel(payload)

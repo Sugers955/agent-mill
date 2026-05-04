@@ -14,13 +14,24 @@ router = APIRouter(prefix="/api/admin/logs", tags=["admin-logs"],
 @router.get("/calls", response_model=CallLogPage)
 async def list_call_logs(
     limit: int = Query(20, ge=1, le=500), offset: int = Query(0, ge=0),
+    user_id: int | None = Query(None),
+    agent_id: int | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
-    total = (await db.execute(select(func.count(CallLog.id)))).scalar_one()
+    filters = []
+    if user_id is not None:
+        filters.append(CallLog.user_id == user_id)
+    if agent_id is not None:
+        filters.append(CallLog.agent_id == agent_id)
+
+    total_q = select(func.count(CallLog.id))
+    if filters:
+        total_q = total_q.where(*filters)
+    total = (await db.execute(total_q)).scalar_one()
 
     user_username = User.username.label("user_username")
     user_display = User.display_name.label("user_display")
-    rows = (await db.execute(
+    q = (
         select(
             CallLog,
             user_username,
@@ -33,10 +44,11 @@ async def list_call_logs(
         .outerjoin(User, User.id == CallLog.user_id)
         .outerjoin(Agent, Agent.id == CallLog.agent_id)
         .outerjoin(Model, Model.id == CallLog.model_id)
-        .order_by(desc(CallLog.id))
-        .limit(limit)
-        .offset(offset)
-    )).all()
+    )
+    if filters:
+        q = q.where(*filters)
+    q = q.order_by(desc(CallLog.id)).limit(limit).offset(offset)
+    rows = (await db.execute(q)).all()
 
     items: list[CallLogOut] = []
     for log, uname, udisp, aname, mcode, mmid, mprov in rows:
@@ -63,21 +75,30 @@ async def list_call_logs(
 @router.get("/audit", response_model=AuditLogPage)
 async def list_audit_logs(
     limit: int = Query(20, ge=1, le=500), offset: int = Query(0, ge=0),
+    user_id: int | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
-    total = (await db.execute(select(func.count(AuditLog.id)))).scalar_one()
+    filters = []
+    if user_id is not None:
+        filters.append(AuditLog.user_id == user_id)
 
-    rows = (await db.execute(
+    total_q = select(func.count(AuditLog.id))
+    if filters:
+        total_q = total_q.where(*filters)
+    total = (await db.execute(total_q)).scalar_one()
+
+    q = (
         select(
             AuditLog,
             User.username.label("user_username"),
             User.display_name.label("user_display"),
         )
         .outerjoin(User, User.id == AuditLog.user_id)
-        .order_by(desc(AuditLog.id))
-        .limit(limit)
-        .offset(offset)
-    )).all()
+    )
+    if filters:
+        q = q.where(*filters)
+    q = q.order_by(desc(AuditLog.id)).limit(limit).offset(offset)
+    rows = (await db.execute(q)).all()
 
     items: list[AuditLogOut] = []
     for log, uname, udisp in rows:

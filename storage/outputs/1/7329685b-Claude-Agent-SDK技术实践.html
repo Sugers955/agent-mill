@@ -1,0 +1,1728 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Claude Agent SDK · 构建企业级智能体 · 技术分享</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;0,800;0,900;1,400;1,700&family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,500;0,8..60,600;1,8..60,400&family=IBM+Plex+Mono:wght@300;400;500;600&family=Noto+Serif+SC:wght@300;400;500;600;700;900&family=Noto+Sans+SC:wght@300;400;500;700;900&display=swap" rel="stylesheet">
+<style>
+  :root{
+    /* ============ 主题色: 🌙 沙丘 ============ */
+    --ink:#1f1a14;
+    --ink-rgb:31,26,20;
+    --paper:#f0e6d2;
+    --paper-rgb:240,230,210;
+    --paper-tint:#e3d7bf;
+    --ink-tint:#2d2620;
+
+    /* ============ 字体(跨主题固定) ============ */
+    --mono:"IBM Plex Mono",ui-monospace,monospace;
+    --serif-en:"Playfair Display","Source Serif 4",Georgia,serif;
+    --serif-body-en:"Source Serif 4",Georgia,serif;
+    --serif-zh:"Noto Serif SC",source-han-serif-sc,serif;
+    --sans-zh:"Noto Sans SC",source-han-sans-sc,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{width:100%;height:100%;overflow:hidden;background:var(--ink);color:var(--paper);font-family:var(--sans-zh);-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+
+  /* ============ WebGL 双背景 ============ */
+  canvas.bg{position:fixed;inset:0;width:100vw;height:100vh;z-index:0;display:block;transition:opacity 1.2s ease}
+  canvas#bg-light{opacity:0}
+  canvas#bg-dark{opacity:1}
+  body.light-bg canvas#bg-light{opacity:1}
+  body.light-bg canvas#bg-dark{opacity:0}
+
+  /* ============ Deck 容器 + 翻页 ============ */
+  #deck{position:fixed;inset:0;width:10000vw;height:100vh;display:flex;flex-wrap:nowrap;transition:transform .9s cubic-bezier(.77,0,.175,1);z-index:10;will-change:transform}
+  .slide{width:100vw;height:100vh;flex:0 0 100vw;position:relative;padding:6vh 6vw 10vh 6vw;display:flex;flex-direction:column;overflow:hidden}
+  .slide.light{color:var(--ink)}
+  .slide.dark{color:var(--paper)}
+
+  /* 默认页：遮罩较厚，保证文字可读 */
+  .slide::before{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;transition:background .7s ease}
+  .slide.light::before{background:rgba(var(--paper-rgb),.78);backdrop-filter:blur(3px)}
+  .slide.dark::before{background:rgba(var(--ink-rgb),.78);backdrop-filter:blur(3px)}
+  /* Hero 页：遮罩大幅降低，让 WebGL 背景明显透出 */
+  .slide.hero.light::before{background:rgba(var(--paper-rgb),.16);backdrop-filter:none}
+  .slide.hero.dark::before{background:rgba(var(--ink-rgb),.12);backdrop-filter:none}
+  /* Hero 页顶底微弱渐隐，保证 chrome/foot 区域可读 */
+  .slide.hero::after{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none}
+  .slide.hero.light::after{background:linear-gradient(180deg,rgba(var(--paper-rgb),.28) 0%,rgba(var(--paper-rgb),0) 14%,rgba(var(--paper-rgb),0) 86%,rgba(var(--paper-rgb),.28) 100%)}
+  .slide.hero.dark::after{background:linear-gradient(180deg,rgba(var(--ink-rgb),.32) 0%,rgba(var(--ink-rgb),0) 14%,rgba(var(--ink-rgb),0) 86%,rgba(var(--ink-rgb),.32) 100%)}
+
+  /* ============ Magazine chrome：顶部 meta + 底部 foot ============ */
+  .chrome{display:flex;justify-content:space-between;align-items:flex-start;font-family:var(--mono);font-size:12px;letter-spacing:.18em;text-transform:uppercase;opacity:.7}
+  .chrome .left,.chrome .right{display:flex;gap:2.4em;align-items:center}
+  .chrome .sep{width:40px;height:1px;background:currentColor;opacity:.4}
+  .foot{margin-top:auto;display:flex;justify-content:space-between;align-items:flex-end;font-family:var(--mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;opacity:.55}
+  .foot .title{font-family:var(--serif-zh);font-weight:400;letter-spacing:.05em;text-transform:none;opacity:.75;font-size:13px}
+
+  .tag{display:inline-block;font-family:var(--mono);font-size:11px;letter-spacing:.24em;text-transform:uppercase;padding:6px 14px;border:1px solid currentColor;opacity:.85}
+  .rule{width:100%;height:1px;background:currentColor;opacity:.25;margin:3vh 0}
+  .rule.v{width:1px;height:100%;margin:0}
+
+  /* ============ 字体规则 ============
+     · 衬线（Noto Serif SC / Playfair）：大标题、重点金句、数字
+     · 非衬线（Noto Sans SC）：正文描述、body、补充说明
+     · 等宽（IBM Plex Mono）：kicker、meta 小标签、foot 右侧
+  */
+  .kicker{font-family:var(--mono);font-size:12px;letter-spacing:.3em;text-transform:uppercase;opacity:.6;margin-bottom:2.6vh}
+  .display{font-family:var(--serif-en);font-weight:700;font-size:11vw;line-height:.92;letter-spacing:-.025em}
+  .display-zh{font-family:var(--serif-zh);font-weight:700;font-size:7.8vw;line-height:1.04;letter-spacing:-.005em}
+  .h1-zh{font-family:var(--serif-zh);font-weight:700;font-size:4.6vw;line-height:1.12;letter-spacing:-.005em}
+  .h2-zh{font-family:var(--serif-zh);font-weight:600;font-size:3.2vw;line-height:1.2;letter-spacing:0}
+  .h3-zh{font-family:var(--serif-zh);font-weight:500;font-size:1.9vw;line-height:1.35}
+  .body-zh{font-family:var(--sans-zh);font-weight:400;font-size:max(15px,1.22vw);line-height:1.75;opacity:.82;letter-spacing:.01em}
+  .body-serif{font-family:var(--serif-zh);font-weight:400;font-size:max(15px,1.3vw);line-height:1.65;opacity:.88}
+  .lead{font-family:var(--serif-zh);font-weight:400;font-size:1.9vw;line-height:1.4;opacity:.85}
+  .meta{font-family:var(--mono);font-size:max(11px,.88vw);letter-spacing:.16em;text-transform:uppercase;opacity:.6}
+  .big-num{font-family:var(--serif-en);font-weight:800;font-size:10vw;line-height:.85;letter-spacing:-.03em;font-feature-settings:"tnum"}
+  .mid-num{font-family:var(--serif-en);font-weight:700;font-size:5.5vw;line-height:.88;letter-spacing:-.02em;font-feature-settings:"tnum"}
+  .ghost{font-family:var(--serif-en);font-weight:900;font-size:34vw;line-height:.8;opacity:.06;letter-spacing:-.04em;position:absolute;font-feature-settings:"tnum"}
+  em{font-style:italic;font-family:var(--serif-en)}
+  .en{font-family:var(--serif-en);font-style:italic;font-weight:500}
+
+  /* ============ 布局工具 ============ */
+  .col{display:flex;flex-direction:column;gap:2.4vh}
+  .row{display:flex;align-items:center;gap:3vw}
+  .grid-6{display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(2,1fr);gap:4vw 6vw;flex:1;align-content:center;padding:2vh 0}
+  .grid-9{display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);gap:3vh 4vw;flex:1;align-content:center}
+  .grid-4{display:grid;grid-template-columns:repeat(2,1fr);grid-template-rows:repeat(2,1fr);gap:4vh 6vw;flex:1;align-content:center}
+  .grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:4vw;flex:1;align-content:center}
+  .split{display:grid;grid-template-columns:1fr 1fr;gap:4vw;flex:1;align-items:center}
+  .split-55{display:grid;grid-template-columns:55fr 45fr;gap:5vw;flex:1;align-items:stretch}
+  .fill{flex:1}
+  .center{align-items:center;justify-content:center;text-align:center}
+  .bottom-left{position:absolute;left:6vw;bottom:9vh;max-width:50vw}
+  .bottom-right{position:absolute;right:6vw;bottom:9vh;max-width:50vw;text-align:right}
+  .top-right{position:absolute;right:6vw;top:6vh;text-align:right}
+
+  /* ============ Stat（数字矩阵） ============ */
+  .stat{display:flex;flex-direction:column;gap:1vh;align-items:flex-start}
+  .stat .n{font-family:var(--serif-en);font-weight:800;font-size:8vw;line-height:.88;letter-spacing:-.03em;font-feature-settings:"tnum"}
+  .stat .l{font-family:var(--sans-zh);font-size:max(13px,1.05vw);opacity:.7;margin-top:1vh;font-weight:400;line-height:1.5}
+  .stat .m{font-family:var(--mono);font-size:10px;letter-spacing:.22em;text-transform:uppercase;opacity:.5;margin-bottom:.2vh}
+
+  /* ============ Callout（引用框） ============ */
+  .callout{padding:3vh 2.4vw;border-left:3px solid currentColor;position:relative;font-family:var(--serif-zh);font-size:max(15px,1.2vw);line-height:1.55;opacity:.92}
+  .slide.light .callout{background:rgba(var(--ink-rgb),.05)}
+  .slide.dark .callout{background:rgba(var(--paper-rgb),.06)}
+  .callout .cite{display:block;margin-top:1.6vh;font-family:var(--mono);font-size:11px;letter-spacing:.2em;text-transform:uppercase;opacity:.6}
+  .callout .q-big{font-family:var(--serif-zh);font-weight:600;font-size:max(17px,1.6vw);line-height:1.42}
+
+  /* ============ Platform（平台卡） ============ */
+  .plat{display:flex;flex-direction:column;justify-content:flex-end;padding:2vh 0;border-top:1px solid currentColor;border-color:rgba(127,127,127,.35)}
+  .plat .name{font-family:var(--serif-zh);font-weight:700;font-size:1.8vw;margin-bottom:.6vh}
+  .plat .nb{font-family:var(--serif-en);font-weight:700;font-size:3.2vw;letter-spacing:-.02em;line-height:1;font-feature-settings:"tnum"}
+  .plat .sub{font-family:var(--mono);font-size:10px;letter-spacing:.18em;text-transform:uppercase;opacity:.55;margin-top:.6vh}
+  .plat .fill{font-family:var(--sans-zh);font-weight:300;font-size:2.4vw;opacity:.28;letter-spacing:-.01em;line-height:1}
+
+  /* ============ Rowline（表格行） ============ */
+  .rowline{display:grid;grid-template-columns:1fr 2fr 1fr;gap:2vw;padding:2.2vh 0;border-top:1px solid currentColor;align-items:center;border-color:rgba(127,127,127,.25)}
+  .rowline:last-child{border-bottom:1px solid currentColor;border-color:rgba(127,127,127,.25)}
+  .rowline .k{font-family:var(--serif-zh);font-weight:700;font-size:1.7vw}
+  .rowline .v{font-family:var(--sans-zh);font-weight:400;font-size:max(14px,1.2vw);opacity:.85;line-height:1.55}
+  .rowline .m{font-family:var(--mono);font-size:11px;letter-spacing:.2em;text-transform:uppercase;opacity:.6;justify-self:end}
+
+  /* ============ Pillar（支柱卡片） ============ */
+  .pillar{display:flex;flex-direction:column;gap:1.8vh}
+  .pillar .ic{font-family:var(--serif-en);font-style:italic;font-size:2.6vw;opacity:.45;font-weight:400}
+  .pillar .ic svg{width:2.8vw;height:2.8vw;stroke-width:1.2;opacity:.7}
+  .pillar .t{font-family:var(--serif-zh);font-weight:700;font-size:2.4vw;line-height:1.1}
+  .pillar .d{font-family:var(--sans-zh);font-weight:400;font-size:max(14px,1.1vw);opacity:.76;line-height:1.6}
+
+  /* ============ Signature / Highlight ============ */
+  .sign{font-family:var(--serif-en);font-style:italic;font-weight:500;font-size:2vw;opacity:.7}
+  .hi{position:relative;display:inline}
+  .slide.dark .hi::after{content:"";position:absolute;left:-.1em;right:-.1em;bottom:-.05em;height:.28em;background:rgba(var(--paper-rgb),.15);z-index:-1}
+  .slide.light .hi::after{content:"";position:absolute;left:-.1em;right:-.1em;bottom:-.05em;height:.28em;background:rgba(var(--ink-rgb),.08);z-index:-1}
+
+  /* ============ Icons（Lucide via CDN） ============ */
+  .ico{width:1em;height:1em;display:inline-block;vertical-align:-.12em;stroke:currentColor;fill:none;stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+  .ico-lg,.ico-md,.ico-sm{fill:none;stroke:currentColor;stroke-linecap:round;stroke-linejoin:round}
+  .ico-lg{width:2.6vw;height:2.6vw;stroke-width:1.2;display:inline-block}
+  .ico-md{width:1.8vw;height:1.8vw;stroke-width:1.3;display:inline-block;vertical-align:-.4em}
+  .ico-sm{width:1.1vw;height:1.1vw;stroke-width:1.4;display:inline-block;vertical-align:-.15em;opacity:.7}
+
+  /* ============ 图片占位（虚线框，提示设计师位置） ============ */
+  .img-slot{border:1.5px dashed rgba(127,127,127,.4);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:1vh;padding:2vh 2vw;font-family:var(--mono);font-size:10px;letter-spacing:.28em;text-transform:uppercase;opacity:.55;position:relative;aspect-ratio:16/9;width:100%;max-height:56vh;margin-inline:auto;box-sizing:border-box}
+  .img-slot::before{content:"";position:absolute;inset:8px;border:1px solid currentColor;opacity:.2}
+  .img-slot .plus{font-size:2vw;font-weight:300;opacity:.5;letter-spacing:0}
+  .img-slot .label{position:relative;z-index:2;text-align:center}
+  .img-slot.r-4x3{aspect-ratio:4/3}
+  .img-slot.r-3x2{aspect-ratio:3/2}
+  .img-slot.r-1x1{aspect-ratio:1/1}
+
+  /* ============ 图片实填框（关键：固定高度 + 只裁底部） ============
+     重要约束：高度用内联 height:Nvh 精确控制，不要用 aspect-ratio（会撑破布局）
+     object-position:top center 保证严禁裁剪顶部和左右，只裁剪底部
+  */
+  .frame-img{overflow:hidden;position:relative;background:rgba(0,0,0,.04);box-sizing:border-box;width:100%;border-radius:4px}
+  .slide.dark .frame-img{background:rgba(255,255,255,.04);border-color:rgba(255,255,255,.12)}
+  .frame-img > img{width:100%;height:100%;object-fit:cover;object-position:top center;display:block}
+  .frame-cap{display:flex;justify-content:space-between;align-items:baseline;gap:1vw;margin-top:.8vh;font-family:var(--mono);font-size:10px;letter-spacing:.22em;text-transform:uppercase;opacity:.72}
+  .frame-cap .pf{font-family:var(--serif-zh);font-weight:600;font-size:max(13px,1vw);letter-spacing:.04em;text-transform:none;opacity:.94}
+  .frame-cap .nb{font-family:var(--serif-en);font-style:italic;font-size:max(15px,1.2vw);letter-spacing:.02em;text-transform:none;opacity:.88}
+  .frame-cap .idx{font-family:var(--mono);opacity:.5}
+  figure.tile{display:flex;flex-direction:column;margin:0;min-width:0}
+  figure.tile > .frame-img{flex:0 0 auto}
+
+  /* ============ 导航 ============ */
+  #nav{position:fixed;left:50%;bottom:2.6vh;transform:translateX(-50%);z-index:30;display:flex;gap:10px;padding:8px 14px;border-radius:999px;background:rgba(0,0,0,.18);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+  #nav .dot{width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,.3);cursor:pointer;transition:all .3s ease;border:0;padding:0}
+  #nav .dot:hover{background:rgba(255,255,255,.5);transform:scale(1.15)}
+  #nav .dot.active{background:rgba(255,255,255,.95);width:22px;border-radius:999px}
+  body.light-bg #nav{background:rgba(255,255,255,.25)}
+  body.light-bg #nav .dot{background:rgba(var(--ink-rgb),.25)}
+  body.light-bg #nav .dot.active{background:rgba(var(--ink-rgb),.9)}
+  #hint{position:fixed;bottom:3vh;right:3vw;z-index:30;font-family:var(--mono);font-size:10px;letter-spacing:.2em;text-transform:uppercase;opacity:.4;mix-blend-mode:difference;color:#aaa}
+
+  /* ============================================================
+     ============ LAYOUTS API · 面向 agent 的类（v2）============
+     所有 layouts.md 中的骨架都基于下面这套命名。
+     如果你在 layouts.md 里看到某个类，它必须在下面有定义。
+     ============================================================ */
+
+  /* ---------- .frame：每页主内容容器 ---------- */
+  .frame{flex:1;display:flex;flex-direction:column;min-height:0;overflow:hidden}
+  /* 当 .frame 同时加了 grid 类时，grid 的 display:grid 覆盖 flex */
+  .frame.grid-2-7-5,
+  .frame.grid-2-6-6,
+  .frame.grid-2-8-4,
+  .frame.grid-3-3,
+  .frame.grid-6{display:grid}
+
+  /* ---------- 标题层级（API 名称，衬线为主） ---------- */
+  .h-hero{
+    font-family:var(--serif-zh);
+    font-weight:900;
+    font-size:10vw;
+    line-height:.96;
+    letter-spacing:-.02em;
+  }
+  .h-xl{
+    font-family:var(--serif-zh);
+    font-weight:700;
+    font-size:6.2vw;
+    line-height:1.08;
+    letter-spacing:-.01em;
+  }
+  .h-sub{
+    font-family:var(--serif-zh);
+    font-weight:500;
+    font-size:3.1vw;
+    line-height:1.25;
+    letter-spacing:0;
+    opacity:.7;
+  }
+  .h-md{
+    font-family:var(--serif-zh);
+    font-weight:600;
+    font-size:2.3vw;
+    line-height:1.3;
+  }
+  /* 英文标题专用（Playfair 衬线） */
+  .h-hero-en,.h-xl-en{font-family:var(--serif-en);letter-spacing:-.025em}
+
+  /* ---------- lead 引语 ---------- */
+  .lead{
+    font-family:var(--serif-zh);
+    font-weight:400;
+    font-size:1.75vw;
+    line-height:1.5;
+    opacity:.86;
+  }
+
+  /* ---------- meta-row 底部元数据 ---------- */
+  .meta-row{
+    display:flex;
+    gap:1.2em;
+    align-items:baseline;
+    flex-wrap:wrap;
+    font-family:var(--mono);
+    font-size:max(12px,.92vw);
+    letter-spacing:.16em;
+    text-transform:uppercase;
+    opacity:.6;
+  }
+
+  /* ---------- stat-card（数据大字报用） ---------- */
+  .stat-card{
+    display:flex;
+    flex-direction:column;
+    gap:.8vh;
+    align-items:flex-start;
+    padding-top:1.6vh;
+    border-top:1px solid currentColor;
+    border-color:rgba(127,127,127,.3);
+  }
+  .stat-card .stat-label{
+    font-family:var(--mono);
+    font-size:max(10px,.78vw);
+    letter-spacing:.24em;
+    text-transform:uppercase;
+    opacity:.55;
+  }
+  .stat-card .stat-nb{
+    font-family:var(--serif-en);
+    font-weight:800;
+    font-size:5.8vw;
+    line-height:.9;
+    letter-spacing:-.03em;
+    font-feature-settings:"tnum";
+    margin-top:.4vh;
+  }
+  .stat-card .stat-nb .stat-unit{
+    font-family:var(--serif-zh);
+    font-weight:500;
+    font-size:.38em;
+    letter-spacing:0;
+    opacity:.72;
+    margin-left:.14em;
+  }
+  .stat-card .stat-note{
+    font-family:var(--sans-zh);
+    font-weight:400;
+    font-size:max(13px,1.05vw);
+    line-height:1.5;
+    opacity:.72;
+    margin-top:.6vh;
+  }
+  /* 当 stat-card 用于 grid-4（2x2），数字适度放大；若页面有标题+引文在上方，可内联 style 覆盖为更小值 */
+  .grid-4 .stat-card .stat-nb{font-size:5vw}
+  /* 当只有 3 个，字也可以稍大 */
+  .grid-3 .stat-card .stat-nb{font-size:6.8vw}
+
+  /* ---------- pipeline（流水线） ---------- */
+  .pipeline-section{
+    margin-top:4.4vh;
+    padding-top:2.8vh;
+    border-top:1px dashed rgba(127,127,127,.32);
+  }
+  .pipeline-section:first-of-type{
+    border-top:0;
+    padding-top:0;
+    margin-top:3vh;
+  }
+  .pipeline-label{
+    font-family:var(--mono);
+    font-size:max(11px,.85vw);
+    letter-spacing:.24em;
+    text-transform:uppercase;
+    opacity:.62;
+    margin-bottom:2.2vh;
+  }
+  .pipeline{
+    display:grid;
+    grid-template-columns:repeat(5,1fr);
+    gap:1.2vw;
+  }
+  .pipeline[data-cols="3"]{grid-template-columns:repeat(3,1fr)}
+  .pipeline[data-cols="4"]{grid-template-columns:repeat(4,1fr)}
+  .pipeline[data-cols="6"]{grid-template-columns:repeat(6,1fr)}
+  .step{
+    display:flex;
+    flex-direction:column;
+    gap:.8vh;
+    padding-top:1.4vh;
+    border-top:1px solid currentColor;
+    border-color:rgba(127,127,127,.35);
+  }
+  .step-nb{
+    font-family:var(--serif-en);
+    font-style:italic;
+    font-weight:500;
+    font-size:1.15vw;
+    opacity:.45;
+  }
+  .step-title{
+    font-family:var(--sans-zh);
+    font-weight:700;
+    font-size:1.55vw;
+    letter-spacing:.01em;
+    line-height:1.2;
+  }
+  .step-desc{
+    font-family:var(--sans-zh);
+    font-weight:400;
+    font-size:max(12px,.95vw);
+    line-height:1.45;
+    opacity:.72;
+  }
+
+  /* ---------- 网格（layouts.md 所用） ---------- */
+  /* 这些类独立挂到任何容器上都能生效，不依赖 .frame 复合选择器 */
+  .grid-2-7-5{display:grid;grid-template-columns:7fr 5fr;gap:3vw 4vh;align-items:start}
+  .grid-2-6-6{display:grid;grid-template-columns:1fr 1fr;gap:3vw 4vh;align-items:start}
+  .grid-2-8-4{display:grid;grid-template-columns:8fr 4fr;gap:3vw 4vh;align-items:start}
+  .grid-3-3{
+    display:grid;
+    grid-template-columns:repeat(3,1fr);
+    grid-auto-rows:minmax(0,1fr);
+    gap:2.4vh 2vw;
+  }
+  /* grid-6 已在旧样式里定义为 3x2，这里仅补 align */
+
+  /* ---------- 图片 frame-img（layouts.md 主命名） ---------- */
+  /* 在旧样式里已定义，这里补 img-cap 命名别名与增强 */
+  figure.frame-img{margin:0;display:flex;flex-direction:column;min-width:0}
+  .img-cap{
+    display:block;
+    margin-top:.8vh;
+    font-family:var(--mono);
+    font-size:max(10px,.8vw);
+    letter-spacing:.22em;
+    text-transform:uppercase;
+    opacity:.6;
+  }
+  /* callout src 命名别名 */
+  .callout-src{
+    display:block;
+    margin-top:1.6vh;
+    font-family:var(--mono);
+    font-size:11px;
+    letter-spacing:.2em;
+    text-transform:uppercase;
+    opacity:.6;
+  }
+
+  /* ---------- chrome & foot 补位（layouts.md 简单写法） ---------- */
+  .chrome{font-family:var(--mono);font-size:max(11px,.78vw);letter-spacing:.2em;text-transform:uppercase;opacity:.62}
+  .foot{font-family:var(--mono);font-size:max(11px,.78vw);letter-spacing:.18em;text-transform:uppercase;opacity:.5}
+
+  /* ============ 动效系统(Motion One 驱动) ============
+     所有 [data-anim] 元素默认隐藏,进入页面时由 JS 逐个揭示。
+     - cascade(默认):按 DOM 顺序 stagger 120ms 淡入 + y:16→0
+     - hero(hero 页自动):慢一点的 stagger 180ms
+     - quote(含 [data-anim="line"]):逐行 600ms 淡入
+     - directional(含 [data-anim="left|right"]):左→分隔线→右
+     - pipeline(data-animate="pipeline"):Space/→ 手动推进
+     Motion One 没加载成功时(CDN 断 + 本地丢),所有 [data-anim] 会兜底显示。
+  */
+  [data-anim]{opacity:0}
+  [data-anim="left"]{transform:translateX(-24px)}
+  [data-anim="right"]{transform:translateX(24px)}
+  [data-anim="line"]{opacity:0;transform:translateY(10px)}
+  [data-animate="pipeline"] [data-anim]{opacity:.15}
+
+  /* ---------- 响应式降级 ---------- */
+  @media (max-width:900px){
+    .display{font-size:16vw}
+    .display-zh{font-size:12vw}
+    .h1-zh{font-size:7vw}
+    .h-hero{font-size:14vw}
+    .h-xl{font-size:9vw}
+    .pipeline{grid-template-columns:repeat(2,1fr)}
+    .grid-2-7-5,.grid-2-6-6,.grid-2-8-4{grid-template-columns:1fr}
+  }
+</style>
+</head>
+<body>
+
+<canvas id="bg-dark" class="bg"></canvas>
+<canvas id="bg-light" class="bg"></canvas>
+<div id="hint">← → 翻页 · ESC 索引</div>
+
+<div id="deck">
+
+<!-- ============================================================
+     PAGE 1: 封面 · Cover
+     ============================================================ -->
+<section class="slide hero dark">
+  <div class="chrome">
+    <div>技术分享 · Technical Talk</div>
+    <div>Vol.01</div>
+  </div>
+  <div class="frame" style="display:grid; gap:4vh; align-content:center; min-height:80vh">
+    <div class="kicker" data-anim>企业级智能体开发指南</div>
+    <h1 class="h-hero" style="font-size:9vw" data-anim>Claude Agent SDK</h1>
+    <h2 class="h-sub" data-anim>在 B/S 架构中构建安全的 AI 智能体</h2>
+    <p class="lead" style="max-width:58vw" data-anim>
+      从工具调用到生产防护：一套完整的技术实践方案，帮助你在浏览器/服务端架构中安全、可控地部署 Claude 智能体。
+    </p>
+    <div class="meta-row" data-anim>
+      <span>技术架构</span><span>·</span><span>B/S 架构</span><span>·</span><span>安全防护</span>
+    </div>
+  </div>
+  <div class="foot">
+    <div>一场关于 Agent SDK 的深度技术分享</div>
+    <div>— 2026 —</div>
+  </div>
+</section>
+
+<!-- ============================================================
+     PAGE 2: 第一幕开启 · Act I Divider
+     ============================================================ -->
+<section class="slide hero light">
+  <div class="chrome">
+    <div>第一幕 · 架构篇</div>
+    <div>Act I / 20</div>
+  </div>
+  <div class="frame" style="display:grid; gap:6vh; align-content:center; min-height:80vh">
+    <div class="kicker" data-anim>Act I</div>
+    <h1 class="h-hero" style="font-size:8.5vw" data-anim>架构基础</h1>
+    <p class="lead" style="max-width:55vw" data-anim>
+      理解 Agent SDK 的核心概念与 B/S 架构下的实现原理。
+    </p>
+  </div>
+  <div class="foot">
+    <div>第一幕引子</div>
+    <div>— · —</div>
+  </div>
+</section>
+
+<!-- ============================================================
+     PAGE 3: 什么是 Agent SDK · What is it
+     ============================================================ -->
+<section class="slide light">
+  <div class="chrome">
+    <div>架构基础 · 概念篇</div>
+    <div>Act I / 01 · 03 / 20</div>
+  </div>
+  <div class="frame grid-2-8-4" style="padding-top:6vh">
+    <!-- 左列 -->
+    <div>
+      <div class="kicker" data-anim>What is it</div>
+      <h2 class="h-xl" style="margin-top:1vh; margin-bottom:3vh" data-anim>什么是<br>Claude Agent SDK</h2>
+
+      <p class="lead" style="margin-bottom:3vh" data-anim>
+        Anthropic 官方提供的智能体开发框架，让你可以用代码精确控制 Claude 的行为、工具和响应流程。
+      </p>
+
+      <p class="body-zh" style="margin-bottom:2.4vh" data-anim>
+        不同于简单的 API 调用，Agent SDK 提供了<strong>结构化对话流、多工具编排、状态管理</strong>等企业级能力。它让 Claude 从"聊天机器人"升级为"可编程智能体"。
+      </p>
+
+      <div class="callout" style="margin-top:3vh" data-anim>
+        "Agent SDK 不是让 AI 更聪明，<br>而是让 AI 的行为更可预测、可控制。"
+        <div class="callout-src">— Anthropic Engineering</div>
+      </div>
+    </div>
+    <!-- 右列 -->
+    <div>
+      <div class="pillar" style="padding:4vh 2vw;border:1px solid currentColor;border-color:rgba(31,26,20,.2)" data-anim>
+        <div class="ic">01</div>
+        <div class="t">核心定位</div>
+        <div class="d">编排层而非模型层<br>连接 LLM 与业务系统</div>
+      </div>
+      <div class="pillar" style="padding:4vh 2vw;border:1px solid currentColor;border-color:rgba(31,26,20,.2);margin-top:2vh" data-anim>
+        <div class="ic">02</div>
+        <div class="t">技术栈</div>
+        <div class="d">Python / TypeScript<br>REST API + SSE</div>
+      </div>
+    </div>
+  </div>
+  <div class="foot">
+    <div>Page 03 · 核心概念</div>
+    <div>Concepts</div>
+  </div>
+</section>
+
+<!-- ============================================================
+     PAGE 4: 架构全景 · Architecture Overview
+     ============================================================ -->
+<section class="slide dark">
+  <div class="chrome">
+    <div>架构基础 · 全景图</div>
+    <div>Act I / 02 · 04 / 20</div>
+  </div>
+  <div class="frame" style="padding-top:5vh">
+    <div class="kicker" data-anim>Architecture</div>
+    <h2 class="h-xl" style="margin-bottom:4vh" data-anim>B/S 架构下的<br>Agent 部署模式</h2>
+
+    <div class="grid-3" style="margin-top:3vh">
+      <div class="pillar" style="padding:3vh 2vw;border:1px solid currentColor;border-color:rgba(240,230,210,.25)" data-anim>
+        <div class="ic"><i data-lucide="monitor" class="ico-lg"></i></div>
+        <div class="t">Browser 层</div>
+        <div class="d">
+          · React / Vue 前端<br>
+          · 用户交互界面<br>
+          · 会话状态管理<br>
+          · 流式响应渲染
+        </div>
+      </div>
+      <div class="pillar" style="padding:3vh 2vw;border:1px solid currentColor;border-color:rgba(240,230,210,.25)" data-anim>
+        <div class="ic"><i data-lucide="server" class="ico-lg"></i></div>
+        <div class="t">Server 层</div>
+        <div class="d">
+          · FastAPI / Express<br>
+          · Agent 编排引擎<br>
+          · 工具注册中心<br>
+          · 上下文管理器
+        </div>
+      </div>
+      <div class="pillar" style="padding:3vh 2vw;border:1px solid currentColor;border-color:rgba(240,230,210,.25)" data-anim>
+        <div class="ic"><i data-lucide="cpu" class="ico-lg"></i></div>
+        <div class="t">Claude API</div>
+        <div class="d">
+          · Messages API<br>
+          · Tool Use 协议<br>
+          · 流式响应 SSE<br>
+          · Token 计费
+        </div>
+      </div>
+    </div>
+
+    <div class="callout" style="margin-top:4vh;max-width:85%" data-anim>
+      <div class="q-big">
+        <i data-lucide="arrow-right-left" class="ico-md"></i> 
+        数据流向：用户输入 → 前端封装 → Server 编排 → Claude 推理 → 工具执行 → 结果回传 → 流式展示
+      </div>
+    </div>
+  </div>
+  <div class="foot">
+    <div>Page 04 · 架构全景</div>
+    <div>System Design</div>
+  </div>
+</section>
+
+<!-- ============================================================
+     PAGE 5: 核心组件 · Core Components
+     ============================================================ -->
+<section class="slide light">
+  <div class="chrome">
+    <div>架构基础 · 组件篇</div>
+    <div>Act I / 03 · 05 / 20</div>
+  </div>
+  <div class="frame" style="padding-top:4vh">
+    <div class="kicker" data-anim>Core Components</div>
+    <h2 class="h-xl" style="margin-bottom:3vh" data-anim>四大核心组件</h2>
+
+    <div class="rowline" data-anim>
+      <div class="k">Agent</div>
+      <div class="v">智能体本体，封装 system prompt、工具列表、对话历史，负责与 Claude API 交互的主入口</div>
+      <div class="m">CORE</div>
+    </div>
+    <div class="rowline" data-anim>
+      <div class="k">Tool</div>
+      <div class="v">可调用的外部函数，通过 JSON Schema 定义输入输出，Agent 可自主决定何时调用</div>
+      <div class="m">EXTEND</div>
+    </div>
+    <div class="rowline" data-anim>
+      <div class="k">Context</div>
+      <div class="v">对话上下文管理器，维护 message history、用户状态、中间结果，支持持久化存储</div>
+      <div class="m">STATE</div>
+    </div>
+    <div class="rowline" data-anim>
+      <div class="k">Runner</div>
+      <div class="v">执行引擎，处理 Tool Use 循环、流式响应、错误重试、超时控制等运行时逻辑</div>
+      <div class="m">ENGINE</div>
+    </div>
+
+    <div style="margin-top:4vh;display:flex;gap:2vw" data-anim>
+      <div class="tag">Python SDK</div>
+      <div class="tag">TypeScript SDK</div>
+      <div class="tag">REST API</div>
+      <div class="tag">SSE Streaming</div>
+    </div>
+  </div>
+  <div class="foot">
+    <div>Page 05 · 组件详解</div>
+    <div>Building Blocks</div>
+  </div>
+</section>
+
+<!-- ============================================================
+     PAGE 6: 工具调用机制 · Tool Use Deep Dive
+     ============================================================ -->
+<section class="slide dark" data-animate="pipeline">
+  <div class="chrome">
+    <div>架构基础 · 工具篇</div>
+    <div>Act I / 04 · 06 / 20</div>
+  </div>
+  <div class="frame" style="padding-top:4vh">
+    <div class="kicker">Tool Use Mechanism</div>
+    <h2 class="h-xl" style="margin-bottom:2vh">工具调用<br>全流程解析</h2>
+
+    <div class="pipeline-section">
+      <div class="pipeline-label">调用循环 · Tool Loop</div>
+      <div class="pipeline" data-cols="5">
+        <div class="step" data-anim="step">
+          <div class="step-nb">01</div>
+          <div class="step-title">用户输入</div>
+          <div class="step-desc">自然语言指令传入 Agent</div>
+        </div>
+        <div class="step" data-anim="step">
+          <div class="step-nb">02</div>
+          <div class="step-title">Claude 推理</div>
+          <div class="step-desc">判断是否需要工具</div>
+        </div>
+        <div class="step" data-anim="step">
+          <div class="step-nb">03</div>
+          <div class="step-title">生成 Tool Call</div>
+          <div class="step-desc">输出结构化调用请求</div>
+        </div>
+        <div class="step" data-anim="step">
+          <div class="step-nb">04</div>
+          <div class="step-title">服务端执行</div>
+          <div class="step-desc">Runner 调用实际函数</div>
+        </div>
+        <div class="step" data-anim="step">
+          <div class="step-nb">05</div>
+          <div class="step-title">结果回传</div>
+          <div class="step-desc">Tool Result → Claude</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="pipeline-section">
+      <div class="pipeline-label">关键技术点</div>
+      <div class="pipeline" data-cols="4">
+        <div class="step" data-anim="step">
+          <div class="step-nb">A</div>
+          <div class="step-title">JSON Schema</div>
+          <div class="step-desc">严格的参数校验</div>
+        </div>
+        <div class="step" data-anim="step">
+          <div class="step-nb">B</div>
+          <div class="step-title">Function Map</div>
+          <div class="step-desc">工具注册表映射</div>
+        </div>
+        <div class="step" data-anim="step">
+          <div class="step-nb">C</div>
+          <div class="step-title">Streaming</div>
+          <div class="step-desc">实时输出调用状态</div>
+        </div>
+        <div class="step" data-anim="step">
+          <div class="step-nb">D</div>
+          <div class="step-title">Parallel</div>
+          <div class="step-desc">支持批量工具调用</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="foot">
+    <div>Page 06 · 工具调用</div>
+    <div>Mechanism</div>
+  </div>
+</section>
+
+<!-- ============================================================
+     PAGE 7: 代码示例 · Code Example
+     ============================================================ -->
+<section class="slide light">
+  <div class="chrome">
+    <div>架构基础 · 实战篇</div>
+    <div>Act I / 05 · 07 / 20</div>
+  </div>
+  <div class="frame grid-2-6-6" style="padding-top:5vh">
+    <!-- 左列：代码说明 -->
+    <div data-anim="left">
+      <div class="kicker" style="opacity:.9">Code Example</div>
+      <h3 class="h-md" style="margin-top:2vh">基础 Agent 定义</h3>
+      <ul style="margin-top:3vh; padding-left:1.2em; display:flex; flex-direction:column; gap:1.4vh; font-family:var(--sans-zh); font-size:max(14px,1.1vw); line-height:1.55">
+        <li>@function_tool 装饰器注册工具</li>
+        <li>Agent 类封装 system prompt</li>
+        <li>Runner.run() 启动对话循环</li>
+        <li>支持异步流式响应</li>
+      </ul>
+      
+      <div class="callout" style="margin-top:3vh">
+        <div class="q-big">
+          关键：工具函数必须是<strong>类型标注</strong>的，SDK 会自动生成 JSON Schema
+        </div>
+      </div>
+    </div>
+    <!-- 右列：代码块 -->
+    <div data-anim="right" style="padding:3vh 2vw; background:rgba(var(--ink-rgb),.04); border-radius:4px; font-family:var(--mono); font-size:max(12px,.85vw); line-height:1.6; overflow:auto">
+<pre style="margin:0; white-space:pre-wrap">
+<span style="opacity:.6">from agents import Agent, Runner, function_tool</span>
+
+<span style="opacity:.6">@function_tool</span>
+async def get_weather(
+    location: str,
+    unit: str = "celsius"
+) -> str:
+    <span style="opacity:.6">"""Get weather for a location."""</span>
+    return f"Weather in {location}: 24°{unit}"
+
+<span style="opacity:.6"># Define the agent</span>
+agent = Agent(
+    name="WeatherBot",
+    instructions="You are a helpful weather assistant.",
+    tools=[get_weather]
+)
+
+<span style="opacity:.6"># Run</span>
+result = await Runner.run(
+    agent,
+    "What's the weather in Tokyo?"
+)
+print(result.final_output)
+</pre>
+    </div>
+  </div>
+  <div class="foot">
+    <div>Page 07 · 代码示例</div>
+    <div>Implementation</div>
+  </div>
+</section>
+
+<!-- ============================================================
+     PAGE 8: 第二幕开启 · Act II Divider
+     ============================================================ -->
+<section class="slide hero dark">
+  <div class="chrome">
+    <div>第二幕 · 安全篇</div>
+    <div>Act II / 20</div>
+  </div>
+  <div class="frame" style="display:grid; gap:6vh; align-content:center; min-height:80vh">
+    <div class="kicker" data-anim>Act II</div>
+    <h1 class="h-hero" style="font-size:8.5vw" data-anim>生产安全</h1>
+    <p class="lead" style="max-width:55vw" data-anim>
+      B/S 架构下智能体部署的七大安全防线。
+    </p>
+  </div>
+  <div class="foot">
+    <div>第二幕引子</div>
+    <div>— · —</div>
+  </div>
+</section>
+
+<!-- ============================================================
+     PAGE 9: 安全架构总览 · Security Overview
+     ============================================================ -->
+<section class="slide light">
+  <div class="chrome">
+    <div>生产安全 · 总览</div>
+    <div>Act II / 01 · 09 / 20</div>
+  </div>
+  <div class="frame" style="padding-top:4vh">
+    <div class="kicker" data-anim>Security Architecture</div>
+    <h2 class="h-xl" style="margin-bottom:3vh" data-anim>七层安全防护体系</h2>
+
+    <div class="grid-3" style="margin-top:2vh">
+      <div class="stat-card" data-anim>
+        <div class="stat-label">Layer 1</div>
+        <div class="stat-nb" style="font-size:4vw">认证鉴权</div>
+        <div class="stat-note">API Key 管理 · JWT 验证 · 请求签名</div>
+      </div>
+      <div class="stat-card" data-anim>
+        <div class="stat-label">Layer 2</div>
+        <div class="stat-nb" style="font-size:4vw">输入校验</div>
+        <div class="stat-note">Prompt 注入检测 · 长度限制 · 敏感词过滤</div>
+      </div>
+      <div class="stat-card" data-anim>
+        <div class="stat-label">Layer 3</div>
+        <div class="stat-nb" style="font-size:4vw">沙箱隔离</div>
+        <div class="stat-note">工具执行隔离 · 资源配额 · 超时控制</div>
+      </div>
+      <div class="stat-card" data-anim>
+        <div class="stat-label">Layer 4</div>
+        <div class="stat-nb" style="font-size:4vw">输出审查</div>
+        <div class="stat-note">内容审核 · 敏感信息脱敏 · 合规检查</div>
+      </div>
+      <div class="stat-card" data-anim>
+        <div class="stat-label">Layer 5</div>
+        <div class="stat-nb" style="font-size:4vw">访问控制</div>
+        <div class="stat-note">RBAC 权限 · 工具白名单 · 速率限制</div>
+      </div>
+      <div class="stat-card" data-anim>
+        <div class="stat-label">Layer 6</div>
+        <div class="stat-nb" style="font-size:4vw">审计追溯</div>
+        <div class="stat-note">全链路日志 · 行为追踪 · 异常告警</div>
+      </div>
+    </div>
+  </div>
+  <div class="foot">
+    <div>Page 09 · 安全总览</div>
+    <div>Defense in Depth</div>
+  </div>
+</section>
+
+<!-- ============================================================
+     PAGE 10: 认证与鉴权 · Authentication
+     ============================================================ -->
+<section class="slide dark">
+  <div class="chrome">
+    <div>生产安全 · 认证篇</div>
+    <div>Act II / 02 · 10 / 20</div>
+  </div>
+  <div class="frame grid-2-7-5" style="padding-top:6vh">
+    <!-- 左列 -->
+    <div style="display:flex; flex-direction:column; justify-content:space-between; gap:3vh">
+      <div>
+        <div class="kicker" data-anim>Layer 1</div>
+        <h2 class="h-xl" style="white-space:nowrap; font-size:6vw" data-anim>
+          认证与鉴权
+        </h2>
+        <p class="lead" style="margin-top:3vh" data-anim>
+          确保只有合法用户能访问 Agent，每个请求都可追溯到具体身份。
+        </p>
+      </div>
+      <div class="callout" data-anim>
+        <div class="q-big">
+          永远不要将 Anthropic API Key 暴露给前端浏览器
+        </div>
+        <div class="callout-src">— 安全红线</div>
+      </div>
+    </div>
+    <!-- 右列 -->
+    <div data-anim>
+      <div class="rowline" style="border-top:0">
+        <div class="k">API Key</div>
+        <div class="v">Server 端环境变量存储，Key 轮转机制，最小权限原则</div>
+        <div class="m">ENV</div>
+      </div>
+      <div class="rowline">
+        <div class="k">JWT Token</div>
+        <div class="v">用户身份令牌，短有效期，支持撤销，RS256 签名</div>
+        <div class="m">AUTH</div>
+      </div>
+      <div class="rowline">
+        <div class="k">Request Sig</div>
+        <div class="v">请求签名防篡改，时间戳防重放，HMAC-SHA256</div>
+        <div class="m">SIGN</div>
+      </div>
+      <div class="rowline">
+        <div class="k">IP Whitelist</div>
+        <div class="v">服务端出口 IP 白名单，VPC 内网通信优先</div>
+        <div class="m">NETWORK</div>
+      </div>
+    </div>
+  </div>
+  <div class="foot">
+    <div>Page 10 · 认证鉴权</div>
+    <div>Authentication</div>
+  </div>
+</section>
+
+<!-- ============================================================
+     PAGE 11: 输入安全 · Input Security
+     ============================================================ -->
+<section class="slide light">
+  <div class="chrome">
+    <div>生产安全 · 输入篇</div>
+    <div>Act II / 03 · 11 / 20</div>
+  </div>
+  <div class="frame" style="padding-top:5vh">
+    <div class="kicker" data-anim>Layer 2</div>
+    <h2 class="h-xl" style="margin-bottom:3vh" data-anim>输入安全防护</h2>
+
+    <div class="grid-2-6-6" style="gap:4vw">
+      <!-- 左：Prompt 注入 -->
+      <div data-anim="left" style="padding:3vh 2vw; border-left:3px solid currentColor">
+        <div class="kicker" style="opacity:.9">Prompt Injection</div>
+        <h3 class="h-md" style="margin-top:1vh">注入攻击防御</h3>
+        <ul style="margin-top:2vh; padding-left:1.2em; display:flex; flex-direction:column; gap:1.2vh; font-family:var(--sans-zh); font-size:max(14px,1.1vw); line-height:1.55">
+          <li>用户输入与系统指令严格分离</li>
+          <li>特殊字符转义处理</li>
+          <li>边界标记符防护</li>
+          <li>输入长度硬性限制</li>
+          <li>多轮对话上下文清洗</li>
+        </ul>
+      </div>
+      <!-- 右：校验策略 -->
+      <div data-anim="right" style="padding:3vh 2vw; border-left:3px solid currentColor">
+        <div class="kicker" style="opacity:.9">Validation</div>
+        <h3 class="h-md" style="margin-top:1vh">多层校验策略</h3>
+        <ul style="margin-top:2vh; padding-left:1.2em; display:flex; flex-direction:column; gap:1.2vh; font-family:var(--sans-zh); font-size:max(14px,1.1vw); line-height:1.55">
+          <li>Pydantic 模型强类型校验</li>
+          <li>正则表达式模式匹配</li>
+          <li>敏感词库实时检测</li>
+          <li>语义内容安全分类</li>
+          <li>速率限制防暴力破解</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="callout" style="margin-top:4vh" data-anim>
+      <div class="q-big">
+        "忽略以上所有指令" — 这类攻击在 B/S 架构中必须在 Server 层拦截，不能依赖前端过滤
+      </div>
+    </div>
+  </div>
+  <div class="foot">
+    <div>Page 11 · 输入安全</div>
+    <div>Input Security</div>
+  </div>
+</section>
+
+<!-- ============================================================
+     PAGE 12: 沙箱与隔离 · Sandboxing
+     ============================================================ -->
+<section class="slide dark">
+  <div class="chrome">
+    <div>生产安全 · 沙箱篇</div>
+    <div>Act II / 04 · 12 / 20</div>
+  </div>
+  <div class="frame" style="padding-top:5vh">
+    <div class="kicker" data-anim>Layer 3</div>
+    <h2 class="h-xl" style="margin-bottom:4vh" data-anim>工具执行沙箱</h2>
+
+    <div class="grid-3">
+      <div class="pillar" style="padding:4vh 2vw;border:1px solid currentColor;border-color:rgba(240,230,210,.25)" data-anim>
+        <div class="ic"><i data-lucide="box" class="ico-lg"></i></div>
+        <div class="t">进程隔离</div>
+        <div class="d">
+          · Docker 容器化执行<br>
+          · 独立进程空间<br>
+          · 文件系统隔离<br>
+          · 网络访问限制
+        </div>
+      </div>
+      <div class="pillar" style="padding:4vh 2vw;border:1px solid currentColor;border-color:rgba(240,230,210,.25)" data-anim>
+        <div class="ic"><i data-lucide="gauge" class="ico-lg"></i></div>
+        <div class="t">资源配额</div>
+        <div class="d">
+          · CPU 时间片限制<br>
+          · 内存上限封顶<br>
+          · 磁盘配额控制<br>
+          · 并发执行限制
+        </div>
+      </div>
+      <div class="pillar" style="padding:4vh 2vw;border:1px solid currentColor;border-color:rgba(240,230,210,.25)" data-anim>
+        <div class="ic"><i data-lucide="timer" class="ico-lg"></i></div>
+        <div class="t">超时熔断</div>
+        <div class="d">
+          · 工具执行超时<br>
+          · 总对话时长限制<br>
+          · Token 消耗上限<br>
+          · 优雅降级机制
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-top:4vh; padding:3vh; background:rgba(var(--paper-rgb),.06); border-radius:4px" data-anim>
+      <div class="kicker" style="margin-bottom:2vh">Best Practice</div>
+      <p class="body-zh" style="opacity:.9">
+        每个工具函数应声明 <code style="background:rgba(var(--paper-rgb),.1); padding:2px 6px; border-radius:2px">@timeout(seconds=30)</code> 和 <code style="background:rgba(var(--paper-rgb),.1); padding:2px 6px; border-radius:2px">@resource_limits(memory="256MB")</code> 装饰器，Runner 会自动执行熔断。
+      </p>
+    </div>
+  </div>
+  <div class="foot">
+    <div>Page 12 · 沙箱隔离</div>
+    <div>Sandboxing</div>
+  </div>
+</section>
+
+<!-- ============================================================
+     PAGE 13: 输出审查 · Output Review
+     ============================================================ -->
+<section class="slide light">
+  <div class="chrome">
+    <div>生产安全 · 输出篇</div>
+    <div>Act II / 05 · 13 / 20</div>
+  </div>
+  <div class="frame grid-2-8-4" style="padding-top:6vh">
+    <!-- 左列 -->
+    <div>
+      <div class="kicker" data-anim>Layer 4</div>
+      <h2 class="h-xl" style="margin-top:1vh; margin-bottom:3vh" data-anim>输出内容审查</h2>
+
+      <p class="lead" style="margin-bottom:3vh" data-anim>
+        Claude 的响应同样需要审查，防止敏感信息泄露和不当内容输出。
+      </p>
+
+      <div class="rowline" style="border-top:0" data-anim>
+        <div class="k">PII 检测</div>
+        <div class="v">身份证号、银行卡、手机号等敏感信息自动脱敏</div>
+      </div>
+      <div class="rowline" data-anim>
+        <div class="k">内容审核</div>
+        <div class="v">暴力、仇恨、成人内容分级过滤</div>
+      </div>
+      <div class="rowline" data-anim>
+        <div class="k">合规检查</div>
+        <div class="v">行业法规、公司政策、地域法律合规</div>
+      </div>
+    </div>
+    <!-- 右列 -->
+    <div data-anim>
+      <div class="callout" style="margin-bottom:3vh">
+        <div class="q-big">输出审查流水线</div>
+      </div>
+      <div class="pipeline" data-cols="1" style="gap:2vh">
+        <div class="step">
+          <div class="step-title">1. Claude 生成响应</div>
+        </div>
+        <div class="step">
+          <div class="step-title">2. 敏感信息扫描</div>
+        </div>
+        <div class="step">
+          <div class="step-title">3. 内容安全分类</div>
+        </div>
+        <div class="step">
+          <div class="step-title">4. 合规规则匹配</div>
+        </div>
+        <div class="step">
+          <div class="step-title">5. 脱敏处理/放行</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="foot">
+    <div>Page 13 · 输出审查</div>
+    <div>Output Review</div>
+  </div>
+</section>
+
+<!-- ============================================================
+     PAGE 14: 访问控制 · Access Control
+     ============================================================ -->
+<section class="slide dark">
+  <div class="chrome">
+    <div>生产安全 · 权限篇</div>
+    <div>Act II / 06 · 14 / 20</div>
+  </div>
+  <div class="frame" style="padding-top:5vh">
+    <div class="kicker" data-anim>Layer 5</div>
+    <h2 class="h-xl" style="margin-bottom:3vh" data-anim>细粒度访问控制</h2>
+
+    <div class="grid-2-6-6" style="gap:4vw">
+      <div data-anim="left">
+        <h3 class="h-md" style="margin-bottom:2vh">RBAC 模型</h3>
+        <div class="rowline" style="border-top:0">
+          <div class="k">Admin</div>
+          <div class="v">全部工具访问 + 配置管理</div>
+        </div>
+        <div class="rowline">
+          <div class="k">User</div>
+          <div class="v">标准工具集 + 只读数据</div>
+        </div>
+        <div class="rowline">
+          <div class="k">Guest</div>
+          <div class="v">受限工具 + 演示数据</div>
+        </div>
+      </div>
+      <div data-anim="right">
+        <h3 class="h-md" style="margin-bottom:2vh">工具白名单</h3>
+        <div class="rowline" style="border-top:0">
+          <div class="k">Database</div>
+          <div class="v">仅 SELECT，禁止 DDL/DML</div>
+        </div>
+        <div class="rowline">
+          <div class="k">API</div>
+          <div class="v">只读接口，敏感操作人工审批</div>
+        </div>
+        <div class="rowline">
+          <div class="k">File</div>
+          <div class="v">只读目录，禁止写系统路径</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="callout" style="margin-top:4vh" data-anim>
+      <div class="q-big">
+        <i data-lucide="shield-check" class="ico-md"></i>
+        原则：每个用户只获得完成其任务所需的最小工具集，工具权限与业务角色绑定
+      </div>
+    </div>
+  </div>
+  <div class="foot">
+    <div>Page 14 · 访问控制</div>
+    <div>Access Control</div>
+  </div>
+</section>
+
+<!-- ============================================================
+     PAGE 15: 审计与监控 · Audit & Monitor
+     ============================================================ -->
+<section class="slide light">
+  <div class="chrome">
+    <div>生产安全 · 审计篇</div>
+    <div>Act II / 07 · 15 / 20</div>
+  </div>
+  <div class="frame" style="padding-top:4vh">
+    <div class="kicker" data-anim>Layer 6</div>
+    <h2 class="h-xl" style="margin-bottom:3vh" data-anim>全链路审计监控</h2>
+
+    <div class="grid-6" style="margin-top:2vh">
+      <div class="stat-card" data-anim>
+        <div class="stat-label">Log</div>
+        <div class="stat-nb" style="font-size:4vw">结构化</div>
+        <div class="stat-note">JSON 格式，可检索，保留 90 天</div>
+      </div>
+      <div class="stat-card" data-anim>
+        <div class="stat-label">Trace</div>
+        <div class="stat-nb" style="font-size:4vw">分布式</div>
+        <div class="stat-note">OpenTelemetry 链路追踪</div>
+      </div>
+      <div class="stat-card" data-anim>
+        <div class="stat-label">Metric</div>
+        <div class="stat-nb" style="font-size:4vw">实时</div>
+        <div class="stat-note">Token 消耗 / 响应延迟 / 错误率</div>
+      </div>
+      <div class="stat-card" data-anim>
+        <div class="stat-label">Alert</div>
+        <div class="stat-nb" style="font-size:4vw">智能</div>
+        <div class="stat-note">异常模式自动检测告警</div>
+      </div>
+      <div class="stat-card" data-anim>
+        <div class="stat-label">Replay</div>
+        <div class="stat-nb" style="font-size:4vw">可追溯</div>
+        <div class="stat-note">完整对话历史回放</div>
+      </div>
+      <div class="stat-card" data-anim>
+        <div class="stat-label">Retention</div>
+        <div class="stat-nb" style="font-size:4vw">合规</div>
+        <div class="stat-note">GDPR / 等保数据保留策略</div>
+      </div>
+    </div>
+
+    <div style="margin-top:4vh; padding:3vh; background:rgba(var(--ink-rgb),.04); border-radius:4px" data-anim>
+      <p class="body-zh">
+        <strong>审计日志必须包含：</strong>用户 ID · 会话 ID · 工具调用序列 · 输入/输出摘要 · Token 消耗 · 执行时长 · 异常堆栈 · 时间戳
+      </p>
+    </div>
+  </div>
+  <div class="foot">
+    <div>Page 15 · 审计监控</div>
+    <div>Audit & Monitor</div>
+  </div>
+</section>
+
+<!-- ============================================================
+     PAGE 16: 第三幕开启 · Act III Divider
+     ============================================================ -->
+<section class="slide hero light">
+  <div class="chrome">
+    <div>第三幕 · 实践篇</div>
+    <div>Act III / 20</div>
+  </div>
+  <div class="frame" style="display:grid; gap:6vh; align-content:center; min-height:80vh">
+    <div class="kicker" data-anim>Act III</div>
+    <h1 class="h-hero" style="font-size:8.5vw" data-anim>工程实践</h1>
+    <p class="lead" style="max-width:55vw" data-anim>
+      从开发到部署的完整工程化方案。
+    </p>
+  </div>
+  <div class="foot">
+    <div>第三幕引子</div>
+    <div>— · —</div>
+  </div>
+</section>
+
+<!-- ============================================================
+     PAGE 17: B/S 架构实战 · B/S Implementation
+     ============================================================ -->
+<section class="slide dark">
+  <div class="chrome">
+    <div>工程实践 · 架构篇</div>
+    <div>Act III / 01 · 17 / 20</div>
+  </div>
+  <div class="frame" style="padding-top:4vh">
+    <div class="kicker" data-anim>Implementation</div>
+    <h2 class="h-xl" style="margin-bottom:3vh" data-anim>浏览器-服务端<br>完整架构</h2>
+
+    <div style="padding:3vh; background:rgba(var(--paper-rgb),.06); border-radius:4px; font-family:var(--mono); font-size:max(11px,.85vw); line-height:1.8" data-anim>
+<pre style="margin:0; white-space:pre-wrap">
+<span style="opacity:.6"># 服务端架构 (Python/FastAPI)</span>
+app/
+├── agents/              <span style="opacity:.6"># Agent 定义与配置</span>
+│   ├── __init__.py
+│   ├── customer_support.py
+│   └── tools/
+│       ├── database.py
+│       ├── api_client.py
+│       └── file_system.py
+├── security/            <span style="opacity:.6"># 安全防护层</span>
+│   ├── auth.py          <span style="opacity:.6"># JWT + API Key 验证</span>
+│   ├── input_guard.py   <span style="opacity:.6"># 输入过滤与注入检测</span>
+│   ├── output_filter.py <span style="opacity:.6"># 输出审查与脱敏</span>
+│   └── audit_logger.py  <span style="opacity:.6"># 审计日志</span>
+├── runners/             <span style="opacity:.6"># 执行引擎封装</span>
+│   ├── sandboxed_runner.py
+│   └── streaming_handler.py
+└── api/
+    ├── routes.py        <span style="opacity:.6"># /chat, /stream 端点</span>
+    └── websocket.py     <span style="opacity:.6"># 实时双向通信</span>
+
+<span style="opacity:.6"># 前端架构 (React/Vue)</span>
+src/
+├── components/
+│   ├── ChatInterface.tsx
+│   ├── StreamingText.tsx
+│   └── ToolCallViewer.tsx
+├── hooks/
+│   ├── useAgentStream.ts    <span style="opacity:.6"># SSE 流式处理</span>
+│   └── useAuth.ts
+└── utils/
+    └── sessionManager.ts
+</pre>
+    </div>
+  </div>
+  <div class="foot">
+    <div>Page 17 · 项目结构</div>
+    <div>Project Structure</div>
+  </div>
+</section>
+
+<!-- ============================================================
+     PAGE 18: 性能优化 · Performance
+     ============================================================ -->
+<section class="slide light">
+  <div class="chrome">
+    <div>工程实践 · 性能篇</div>
+    <div>Act III / 02 · 18 / 20</div>
+  </div>
+  <div class="frame" style="padding-top:4vh">
+    <div class="kicker" data-anim>Performance</div>
+    <h2 class="h-xl" style="margin-bottom:3vh" data-anim>性能优化策略</h2>
+
+    <div class="grid-3">
+      <div class="pillar" style="padding:3vh 2vw;border:1px solid currentColor;border-color:rgba(31,26,20,.2)" data-anim>
+        <div class="ic">01</div>
+        <div class="t">连接池管理</div>
+        <div class="d">
+          HTTP/2 长连接<br>
+          Claude API 连接复用<br>
+          减少 TLS 握手开销
+        </div>
+      </div>
+      <div class="pillar" style="padding:3vh 2vw;border:1px solid currentColor;border-color:rgba(31,26,20,.2)" data-anim>
+        <div class="ic">02</div>
+        <div class="t">上下文压缩</div>
+        <div class="d">
+          智能消息截断<br>
+          摘要替代历史<br>
+          Token 预算管理
+        </div>
+      </div>
+      <div class="pillar" style="padding:3vh 2vw;border:1px solid currentColor;border-color:rgba(31,26,20,.2)" data-anim>
+        <div class="ic">03</div>
+        <div class="t">流式渲染</div>
+        <div class="d">
+          Server-Sent Events<br>
+          增量 UI 更新<br>
+          工具调用可视化
+        </div>
+      </div>
+    </div>
+
+    <div class="grid-3" style="margin-top:3vh">
+      <div class="pillar" style="padding:3vh 2vw;border:1px solid currentColor;border-color:rgba(31,26,20,.2)" data-anim>
+        <div class="ic">04</div>
+        <div class="t">缓存策略</div>
+        <div class="d">
+          工具结果缓存<br>
+          Embedding 缓存<br>
+          相似查询命中
+        </div>
+      </div>
+      <div class="pillar" style="padding:3vh 2vw;border:1px solid currentColor;border-color:rgba(31,26,20,.2)" data-anim>
+        <div class="ic">05</div>
+        <div class="t">模型路由</div>
+        <div class="d">
+          简单任务 → Claude 3 Haiku<br>
+          复杂推理 → Claude 3 Opus<br>
+          成本与质量平衡
+        </div>
+      </div>
+      <div class="pillar" style="padding:3vh 2vw;border:1px solid currentColor;border-color:rgba(31,26,20,.2)" data-anim>
+        <div class="ic">06</div>
+        <div class="t">并发控制</div>
+        <div class="d">
+          请求队列限流<br>
+          用户级并发限制<br>
+          优先级调度
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="foot">
+    <div>Page 18 · 性能优化</div>
+    <div>Performance</div>
+  </div>
+</section>
+
+<!-- ============================================================
+     PAGE 19: 部署检查清单 · Deployment Checklist
+     ============================================================ -->
+<section class="slide dark">
+  <div class="chrome">
+    <div>工程实践 · 部署篇</div>
+    <div>Act III / 03 · 19 / 20</div>
+  </div>
+  <div class="frame" style="padding-top:4vh">
+    <div class="kicker" data-anim>Deployment</div>
+    <h2 class="h-xl" style="margin-bottom:3vh" data-anim>生产部署检查清单</h2>
+
+    <div class="grid-2-6-6" style="gap:3vw">
+      <div data-anim="left">
+        <h3 class="h-md" style="margin-bottom:2vh">安全 √</h3>
+        <ul style="padding-left:1.2em; display:flex; flex-direction:column; gap:1.2vh; font-family:var(--sans-zh); font-size:max(14px,1.1vw); line-height:1.55">
+          <li>API Key 存储在环境变量</li>
+          <li>HTTPS 强制加密</li>
+          <li>CORS 白名单配置</li>
+          <li>请求签名验证</li>
+          <li>输入输出过滤启用</li>
+          <li>沙箱隔离测试通过</li>
+        </ul>
+      </div>
+      <div data-anim="right">
+        <h3 class="h-md" style="margin-bottom:2vh">运维 √</h3>
+        <ul style="padding-left:1.2em; display:flex; flex-direction:column; gap:1.2vh; font-family:var(--sans-zh); font-size:max(14px,1.1vw); line-height:1.55">
+          <li>健康检查端点配置</li>
+          <li>日志聚合到 ELK/Loki</li>
+          <li>监控告警规则设置</li>
+          <li>自动扩缩容策略</li>
+          <li>灾备方案就绪</li>
+          <li>回滚流程文档化</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="callout" style="margin-top:4vh" data-anim>
+      <div class="q-big">
+        上线前请完成渗透测试、压力测试、数据安全评估三项检查
+      </div>
+    </div>
+  </div>
+  <div class="foot">
+    <div>Page 19 · 部署清单</div>
+    <div>Checklist</div>
+  </div>
+</section>
+
+<!-- ============================================================
+     PAGE 20: 结尾 · Closing
+     ============================================================ -->
+<section class="slide hero dark">
+  <div class="chrome">
+    <div>总结 · The Takeaway</div>
+    <div>20 / 20</div>
+  </div>
+  <div class="frame" style="display:grid; gap:5vh; align-content:center; min-height:80vh">
+    <div class="kicker" data-anim>Conclusion</div>
+    <blockquote style="font-family:var(--serif-zh); font-weight:700; font-size:5vw; line-height:1.3; letter-spacing:-.01em; max-width:75vw">
+      <span data-anim="line" style="display:block">Agent SDK 让 AI 从</span>
+      <span data-anim="line" style="display:block">"黑盒对话"变成</span>
+      <span data-anim="line" style="display:block">"可控系统"。</span>
+    </blockquote>
+    <p class="lead" style="max-width:55vw; opacity:.75" data-anim>
+      在 B/S 架构中，安全不是可选项——<br>
+      它是智能体能否进入生产环境的入场券。
+    </p>
+    <div class="meta-row" data-anim>
+      <span>Claude Agent SDK</span><span>·</span><span>B/S Architecture</span><span>·</span><span>Security First</span>
+    </div>
+  </div>
+  <div class="foot">
+    <div>感谢聆听 · Q&A</div>
+    <div>— · —</div>
+  </div>
+</section>
+
+</div>
+
+<div id="nav"></div>
+
+<script>
+/* =============== WebGL 双背景 =============== */
+const VS = `attribute vec2 position;void main(){gl_Position=vec4(position,0.0,1.0);}`;
+
+const FS_DARK = `precision highp float;
+uniform vec2 u_resolution;uniform float u_time;uniform vec2 u_mouse;
+vec3 palette(float t,vec3 a,vec3 b,vec3 c,vec3 d){return a+b*cos(6.28318*(c*t+d));}
+void main(){
+  vec2 uv=gl_FragCoord.xy/u_resolution.xy;
+  vec2 p=uv*2.0-1.0;p.x*=u_resolution.x/u_resolution.y;
+  vec2 m=u_mouse*2.0-1.0;m.x*=u_resolution.x/u_resolution.y;
+  float md=length(p-m);
+  float mr=sin(md*15.0-u_time*4.0)*exp(-md*3.0);p+=mr*0.08;
+  vec2 p0=p;
+  for(float i=1.0;i<4.0;i++){
+    p.x+=0.1/i*sin(i*3.0*p.y+u_time*0.4)+0.05;
+    p.y+=0.1/i*cos(i*2.0*p.x+u_time*0.3)-0.05;
+  }
+  float r=length(p);float ang=atan(p.y,p.x);
+  vec3 a=vec3(0.12,0.12,0.13);
+  vec3 b=vec3(0.03,0.04,0.05);
+  vec3 c=vec3(1.0,1.0,1.0);
+  vec3 d=vec3(0.1,0.2,0.4);
+  vec3 col=palette(r*1.5+p0.x*0.5+u_time*0.1,a,b,c,d);
+  float disp=sin(r*25.0-u_time*1.5+ang*2.0)*0.5+0.5;
+  col+=vec3(disp*0.015,disp*0.01,disp*0.02);
+  float hi=pow(sin(p.x*4.0+p.y*3.0+u_time)*0.5+0.5,8.0);
+  col+=hi*0.08;
+  vec3 base=vec3(0.05,0.05,0.06);
+  col=mix(base,col,0.85);
+  gl_FragColor=vec4(col,1.0);
+}`;
+
+const FS_LIGHT = `precision highp float;
+uniform vec2 u_resolution;uniform float u_time;uniform vec2 u_mouse;
+float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
+float noise(vec2 p){
+  vec2 i=floor(p),f=fract(p);
+  float a=hash(i),b=hash(i+vec2(1,0));
+  float c=hash(i+vec2(0,1)),d=hash(i+vec2(1,1));
+  vec2 u=f*f*(3.0-2.0*f);
+  return mix(a,b,u.x)+(c-a)*u.y*(1.0-u.x)+(d-b)*u.x*u.y;
+}
+float fbm(vec2 p){
+  float v=0.0,a=0.5;
+  mat2 m=mat2(0.80,0.60,-0.60,0.80);
+  for(int i=0;i<5;i++){v+=a*noise(p);p=m*p*2.02;a*=0.5;}
+  return v;
+}
+void main(){
+  vec2 uv=gl_FragCoord.xy/u_resolution.xy;
+  vec2 p=uv;p.x*=u_resolution.x/u_resolution.y;
+  vec2 m=u_mouse;m.x*=u_resolution.x/u_resolution.y;
+  vec2 md=p-m;float dl=length(md);
+  p+=normalize(md+vec2(0.0001))*exp(-dl*5.0)*0.03;
+  vec2 q=vec2(fbm(p*1.8+u_time*0.07),fbm(p*1.8+vec2(5.2,1.3)+u_time*0.06));
+  vec2 r=vec2(fbm(p*2.0+q*1.3+vec2(1.7,9.2)+u_time*0.05),
+              fbm(p*2.0+q*1.3+vec2(8.3,2.8)+u_time*0.04));
+  float f=fbm(p*2.2+r*1.5);
+  vec3 silverDark=vec3(0.86,0.85,0.84);
+  vec3 paper=vec3(0.955,0.945,0.925);
+  vec3 col=mix(silverDark,paper,f);
+  float ph=r.x*2.2+u_time*0.35;
+  col+=vec3(0.78,0.62,0.92)*sin(ph)*0.055;
+  col+=vec3(0.55,0.72,0.95)*sin(ph*0.8+2.0)*0.05;
+  float hl=smoothstep(0.48,0.92,f);
+  col+=hl*0.06;
+  gl_FragColor=vec4(col,1.0);
+}`;
+
+const mouse={x:0.5,y:0.5};
+addEventListener('mousemove',e=>{mouse.x=e.clientX/innerWidth;mouse.y=e.clientY/innerHeight});
+
+function bootGL(canvasId, fsSrc){
+  const canvas=document.getElementById(canvasId);
+  const gl=canvas.getContext('webgl',{alpha:false,antialias:true});
+  if(!gl) return ()=>false;
+  const mk=(t,s)=>{const sh=gl.createShader(t);gl.shaderSource(sh,s);gl.compileShader(sh);return sh};
+  const prog=gl.createProgram();
+  gl.attachShader(prog,mk(gl.VERTEX_SHADER,VS));
+  gl.attachShader(prog,mk(gl.FRAGMENT_SHADER,fsSrc));
+  gl.linkProgram(prog);gl.useProgram(prog);
+  const buf=gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER,buf);
+  gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,1,-1,-1,1,-1,1,1,-1,1,1]),gl.STATIC_DRAW);
+  const pos=gl.getAttribLocation(prog,'position');
+  gl.enableVertexAttribArray(pos);gl.vertexAttribPointer(pos,2,gl.FLOAT,false,0,0);
+  const lRes=gl.getUniformLocation(prog,'u_resolution');
+  const lT=gl.getUniformLocation(prog,'u_time');
+  const lM=gl.getUniformLocation(prog,'u_mouse');
+  const resize=()=>{
+    const d=Math.min(window.devicePixelRatio||1,2);
+    canvas.width=innerWidth*d;canvas.height=innerHeight*d;
+    gl.viewport(0,0,canvas.width,canvas.height);
+  };
+  addEventListener('resize',resize);resize();
+  return (tSec)=>{
+    gl.uniform2f(lRes,canvas.width,canvas.height);
+    gl.uniform1f(lT,tSec);
+    gl.uniform2f(lM,mouse.x,1-mouse.y);
+    gl.drawArrays(gl.TRIANGLES,0,6);
+    return true;
+  };
+}
+const drawDark=bootGL('bg-dark',FS_DARK);
+const drawLight=bootGL('bg-light',FS_LIGHT);
+const t0=Date.now();
+(function loop(){
+  const t=(Date.now()-t0)/1000;
+  drawDark(t);drawLight(t);
+  requestAnimationFrame(loop);
+})();
+
+// =============== 导航（翻页 / 圆点 / 键盘 / 滚轮 / 触屏） ===============
+const deck=document.getElementById('deck');
+const slides=deck.querySelectorAll('.slide');
+const nav=document.getElementById('nav');
+let idx=0,total=slides.length,lock=false;
+
+deck.style.width=(total*100)+'vw';
+
+slides.forEach((s,i)=>{
+  const b=document.createElement('button');
+  b.className='dot';b.dataset.i=i;b.setAttribute('aria-label','Page '+(i+1));
+  b.onclick=()=>go(i);
+  nav.appendChild(b);
+});
+
+function go(n){
+  if(lock)return;
+  idx=Math.max(0,Math.min(total-1,n));
+  deck.style.transform=`translateX(${-idx*100}vw)`;
+  nav.querySelectorAll('.dot').forEach((d,i)=>d.classList.toggle('active',i===idx));
+  const el=slides[idx];
+  const th=el.classList.contains('light')?'light':'dark';
+  document.body.classList.toggle('light-bg',th==='light');
+  if(window.__playSlide) setTimeout(()=>window.__playSlide(idx), 450);
+  lock=true;setTimeout(()=>lock=false,700);
+}
+
+let overviewOn=false;
+const ov=document.createElement('div');
+ov.id='overview';
+ov.style.cssText='position:fixed;inset:0;z-index:100;background:rgba(var(--ink-rgb),.92);backdrop-filter:blur(12px);display:none;overflow-y:auto;padding:4vh 4vw';
+document.body.appendChild(ov);
+
+function buildOverview(){
+  ov.innerHTML='';
+  const grid=document.createElement('div');
+  grid.style.cssText='display:grid;grid-template-columns:repeat(4,1fr);gap:2vh 1.6vw;max-width:90vw;margin:0 auto';
+  slides.forEach((s,i)=>{
+    const card=document.createElement('div');
+    card.style.cssText='cursor:pointer;border-radius:6px;overflow:hidden;border:2px solid '+(i===idx?'rgba(var(--paper-rgb),.8)':'rgba(var(--paper-rgb),.15)')+';transition:border-color .2s';
+    card.onmouseenter=()=>card.style.borderColor='rgba(var(--paper-rgb),.6)';
+    card.onmouseleave=()=>card.style.borderColor=i===idx?'rgba(var(--paper-rgb),.8)':'rgba(var(--paper-rgb),.15)';
+    const wrap=document.createElement('div');
+    wrap.style.cssText='width:100%;aspect-ratio:16/9;overflow:hidden;position:relative;pointer-events:none;background:'+(s.classList.contains('light')?'var(--paper)':'var(--ink)');
+    const clone=s.cloneNode(true);
+    clone.style.cssText='width:100vw;height:100vh;transform:scale('+(1/4.5)+');transform-origin:top left;position:absolute;top:0;left:0;pointer-events:none';
+    wrap.appendChild(clone);
+    const label=document.createElement('div');
+    label.style.cssText='padding:6px 10px;font-family:var(--mono);font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--paper);opacity:.7';
+    label.textContent=(i+1)+' / '+total;
+    card.appendChild(wrap);
+    card.appendChild(label);
+    card.onclick=()=>{toggleOverview();go(i)};
+    grid.appendChild(card);
+  });
+  ov.appendChild(grid);
+}
+
+function toggleOverview(){
+  overviewOn=!overviewOn;
+  if(overviewOn){buildOverview();ov.style.display='block';}
+  else{ov.style.display='none';}
+}
+
+addEventListener('keydown',e=>{
+  if(e.key==='Escape'){e.preventDefault();toggleOverview();return;}
+  if(overviewOn)return;
+  if(e.key==='ArrowRight'||e.key==='PageDown'||e.key===' '||e.key==='ArrowDown'){
+    if(window.__pipeAdvance && window.__pipeAdvance()) return;
+    go(idx+1);
+    return;
+  }
+  if(e.key==='ArrowLeft'||e.key==='PageUp'||e.key==='ArrowUp')go(idx-1);
+  if(e.key==='Home')go(0);
+  if(e.key==='End')go(total-1);
+});
+
+let wheelTO=null,wheelAcc=0;
+addEventListener('wheel',e=>{
+  wheelAcc+=e.deltaY+e.deltaX;
+  if(Math.abs(wheelAcc)>50){
+    if(wheelAcc>0 && window.__pipeAdvance && window.__pipeAdvance()){
+      wheelAcc=0;
+    }else{
+      go(idx+(wheelAcc>0?1:-1));wheelAcc=0;
+    }
+  }
+  clearTimeout(wheelTO);wheelTO=setTimeout(()=>wheelAcc=0,150);
+},{passive:true});
+
+let tx=0,ty=0;
+addEventListener('touchstart',e=>{tx=e.touches[0].clientX;ty=e.touches[0].clientY},{passive:true});
+addEventListener('touchend',e=>{
+  const dx=(e.changedTouches[0].clientX-tx);
+  const dy=(e.changedTouches[0].clientY-ty);
+  if(Math.abs(dx)>50&&Math.abs(dx)>Math.abs(dy)){
+    if(dx<0 && window.__pipeAdvance && window.__pipeAdvance()) return;
+    go(idx+(dx<0?1:-1));
+  }
+},{passive:true});
+
+go(0);
+</script>
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+<script>lucide.createIcons();</script>
+
+<script type="module">
+let motion;
+try {
+  motion = await import('./assets/motion.min.js');
+} catch(e1) {
+  try {
+    motion = await import('https://cdn.jsdelivr.net/npm/motion@11.11.17/+esm');
+  } catch(e2) {
+    console.warn('[motion] local + CDN both failed, disabling animations', e1, e2);
+    document.querySelectorAll('[data-anim]').forEach(el=>{el.style.opacity='1';el.style.transform='none'});
+    document.querySelectorAll('[data-animate="pipeline"] [data-anim]').forEach(el=>el.style.opacity='1');
+  }
+}
+
+if(motion){
+  const { animate, stagger } = motion;
+  const EASE = [.22, 1, .36, 1];
+  const slides = [...document.querySelectorAll('.slide')];
+  let pipeStep = -1;
+  let lastIdx = -1;
+
+  function resetAnims(slide){
+    slide.querySelectorAll('[data-anim]').forEach(el=>{
+      el.style.opacity='';
+      el.style.transform='';
+    });
+  }
+
+  function playSlide(i){
+    const slide = slides[i];
+    if(!slide) return;
+    lastIdx = i;
+    const recipe = slide.dataset.animate || (slide.classList.contains('hero') ? 'hero' : 'cascade');
+
+    if(recipe === 'pipeline'){
+      pipeStep = -1;
+      slide.querySelectorAll('[data-anim]').forEach(el=>{
+        el.style.opacity='0.15';
+        el.style.transform='none';
+      });
+      return;
+    }
+
+    resetAnims(slide);
+    const all = [...slide.querySelectorAll('[data-anim]')];
+    if(!all.length) return;
+
+    if(recipe === 'directional'){
+      const lefts  = all.filter(el=>el.dataset.anim==='left');
+      const divs   = all.filter(el=>el.dataset.anim==='divider');
+      const rights = all.filter(el=>el.dataset.anim==='right');
+      const others = all.filter(el=>!['left','right','divider'].includes(el.dataset.anim));
+      if(others.length) animate(others, {opacity:[0,1], y:[12,0]}, {duration:.6, delay:stagger(.1, {start:.15}), easing:EASE});
+      if(lefts.length)  animate(lefts,  {opacity:[0,1], x:[-24,0]}, {duration:.8, delay:.35, easing:EASE});
+      if(divs.length)   animate(divs,   {opacity:[0,.25]},          {duration:.5, delay:.9});
+      if(rights.length) animate(rights, {opacity:[0,1], x:[24,0]},  {duration:.8, delay:1.0, easing:EASE});
+      return;
+    }
+
+    if(recipe === 'quote'){
+      const lines = all.filter(el=>el.dataset.anim==='line');
+      const others = all.filter(el=>el.dataset.anim!=='line');
+      if(others.length) animate(others, {opacity:[0,1], y:[8,0]},    {duration:.6, delay:stagger(.12, {start:.2}), easing:EASE});
+      if(lines.length)  animate(lines,  {opacity:[.35,1], y:[10,0]}, {duration:.8, delay:stagger(.55, {start:.5}), easing:EASE});
+      return;
+    }
+
+    if(recipe === 'hero'){
+      animate(all, {opacity:[0,1], y:[14,0]}, {duration:.9, delay:stagger(.16, {start:.2}), easing:EASE});
+      return;
+    }
+
+    animate(all, {opacity:[0,1], y:[16,0]}, {duration:.75, delay:stagger(.1, {start:.15}), easing:EASE});
+  }
+
+  function pipeAdvance(){
+    const slide = slides[lastIdx];
+    if(!slide || slide.dataset.animate !== 'pipeline') return false;
+    const steps  = [...slide.querySelectorAll('[data-anim="step"]')];
+    const arrows = [...slide.querySelectorAll('[data-anim="arrow"]')];
+    if(pipeStep >= steps.length - 1) return false;
+    pipeStep++;
+    animate(steps[pipeStep], {opacity:[0.15,1], y:[8,0]}, {duration:.5, easing:EASE});
+    if(pipeStep > 0 && arrows[pipeStep-1]){
+      animate(arrows[pipeStep-1], {opacity:[0.15,.7]}, {duration:.3, delay:.15});
+    }
+    return true;
+  }
+
+  window.__playSlide = playSlide;
+  window.__pipeAdvance = pipeAdvance;
+
+  playSlide(0);
+}
+</script>
+</body>
+</html>

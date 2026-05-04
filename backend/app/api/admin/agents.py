@@ -5,10 +5,11 @@ from sqlalchemy import select, delete, update
 from ...db.session import get_db
 from ...db.models import Agent, AgentSkill, AgentMCP, RoleAgentGrant
 from ...deps import require_admin_or_operator
+from ...services.audit import audit
+from ...db.models import User
 from ...schemas import AgentIn, AgentOut
 
-router = APIRouter(prefix="/api/admin/agents", tags=["admin-agents"],
-                   dependencies=[Depends(require_admin_or_operator)])
+router = APIRouter(prefix="/api/admin/agents", tags=["admin-agents"])
 
 
 async def _to_out(db: AsyncSession, a: Agent) -> AgentOut:
@@ -23,13 +24,13 @@ async def _to_out(db: AsyncSession, a: Agent) -> AgentOut:
 
 
 @router.get("", response_model=list[AgentOut])
-async def list_agents(db: AsyncSession = Depends(get_db)):
+async def list_agents(db: AsyncSession = Depends(get_db), _=Depends(require_admin_or_operator)):
     rows = (await db.execute(select(Agent).order_by(Agent.id))).scalars().all()
     return [await _to_out(db, a) for a in rows]
 
 
 @router.get("/{aid}", response_model=AgentOut)
-async def get_agent(aid: int, db: AsyncSession = Depends(get_db)):
+async def get_agent(aid: int, db: AsyncSession = Depends(get_db), _=Depends(require_admin_or_operator)):
     a = (await db.execute(select(Agent).where(Agent.id == aid))).scalar_one_or_none()
     if not a:
         raise HTTPException(404, "不存在")
@@ -46,7 +47,7 @@ async def _set_relations(db: AsyncSession, agent_id: int, payload: AgentIn) -> N
 
 
 @router.post("", response_model=AgentOut)
-async def create_agent(payload: AgentIn, db: AsyncSession = Depends(get_db)):
+async def create_agent(payload: AgentIn, db: AsyncSession = Depends(get_db), actor: User = Depends(require_admin_or_operator)):
     if (await db.execute(select(Agent).where(Agent.code == payload.code))).scalar_one_or_none():
         raise HTTPException(400, "code 已存在")
     if payload.is_default:
@@ -56,12 +57,13 @@ async def create_agent(payload: AgentIn, db: AsyncSession = Depends(get_db)):
     db.add(a)
     await db.flush()
     await _set_relations(db, a.id, payload)
+    await audit(db, actor.id, "agent.create", target_type="agent", target_id=None)
     await db.commit(); await db.refresh(a)
     return await _to_out(db, a)
 
 
 @router.patch("/{aid}", response_model=AgentOut)
-async def update_agent(aid: int, payload: AgentIn, db: AsyncSession = Depends(get_db)):
+async def update_agent(aid: int, payload: AgentIn, db: AsyncSession = Depends(get_db), actor: User = Depends(require_admin_or_operator)):
     a = (await db.execute(select(Agent).where(Agent.id == aid))).scalar_one_or_none()
     if not a:
         raise HTTPException(404, "不存在")
@@ -70,14 +72,16 @@ async def update_agent(aid: int, payload: AgentIn, db: AsyncSession = Depends(ge
     for k, v in payload.model_dump(exclude={"skill_ids", "mcp_ids", "role_ids"}).items():
         setattr(a, k, v)
     await _set_relations(db, a.id, payload)
+    await audit(db, actor.id, "agent.update", target_type="agent", target_id=a.id)
     await db.commit(); await db.refresh(a)
     return await _to_out(db, a)
 
 
 @router.delete("/{aid}")
-async def delete_agent(aid: int, db: AsyncSession = Depends(get_db)):
+async def delete_agent(aid: int, db: AsyncSession = Depends(get_db), actor: User = Depends(require_admin_or_operator)):
     a = (await db.execute(select(Agent).where(Agent.id == aid))).scalar_one_or_none()
     if not a:
         raise HTTPException(404, "不存在")
+    await audit(db, actor.id, "agent.delete", target_type="agent", target_id=a.id)
     await db.delete(a); await db.commit()
     return {"ok": True}
