@@ -73,8 +73,17 @@
             <el-option v-for="r in roles" :key="r.id" :label="r.name" :value="r.id" />
           </el-select>
         </el-form-item>
+        <el-divider style="margin:16px 0 8px"><span style="font-size:12px;color:var(--m-text-secondary)">文件上传策略</span></el-divider>
         <el-form-item label="允许扩展名">
           <el-input v-model="extText" placeholder="逗号分隔,如: pdf,docx,png. 留空=不限" />
+        </el-form-item>
+        <el-form-item label="单文件大小">
+          <el-input-number v-model="maxSizeMb" :min="0" :max="500" :step="5" controls-position="right" />
+          <span style="margin-left:8px;font-size:12px;color:var(--m-text-secondary)">MB · 0 表示用全局默认</span>
+        </el-form-item>
+        <el-form-item label="单次发送上限">
+          <el-input-number v-model="maxFilesPerSend" :min="0" :max="50" :step="1" controls-position="right" />
+          <span style="margin-left:8px;font-size:12px;color:var(--m-text-secondary)">个 · 一次发送最多带几个文件,0 表示不限</span>
         </el-form-item>
         <el-form-item label="设为默认">
           <el-switch v-model="form.is_default" />
@@ -103,6 +112,8 @@ const visible = ref(false)
 const editing = ref<any | null>(null)
 const form = reactive<any>(emptyForm())
 const extText = ref('')
+const maxSizeMb = ref<number>(0)
+const maxFilesPerSend = ref<number>(0)
 
 function emptyForm() {
   return {
@@ -129,17 +140,27 @@ function openCreate() {
   editing.value = null
   Object.assign(form, emptyForm())
   extText.value = ''
+  maxSizeMb.value = 0
+  maxFilesPerSend.value = 0
   visible.value = true
 }
 function openEdit(row: any) {
   editing.value = row
   Object.assign(form, JSON.parse(JSON.stringify(row)))
-  extText.value = (row.upload_policy_json?.allowed_ext || []).join(',')
+  const policy = row.upload_policy_json || {}
+  extText.value = (policy.allowed_ext || []).join(',')
+  maxSizeMb.value = Number(policy.max_size_mb || 0)
+  // Backwards-compat: read legacy max_files_per_conv if present
+  maxFilesPerSend.value = Number(policy.max_files_per_send || policy.max_files_per_conv || 0)
   visible.value = true
 }
 async function onSubmit() {
   const ext = extText.value.split(',').map(s => s.trim()).filter(Boolean)
-  form.upload_policy_json = ext.length ? { allowed_ext: ext } : {}
+  const policy: any = {}
+  if (ext.length) policy.allowed_ext = ext
+  if (maxSizeMb.value > 0) policy.max_size_mb = maxSizeMb.value
+  if (maxFilesPerSend.value > 0) policy.max_files_per_send = maxFilesPerSend.value
+  form.upload_policy_json = policy
   if (editing.value) await api.updateAgent(editing.value.id, form)
   else await api.createAgent(form)
   visible.value = false

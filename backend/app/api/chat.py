@@ -223,7 +223,41 @@ async def list_messages(cid: int, user: User = Depends(current_user), db: AsyncS
     rows = (await db.execute(
         select(Message).where(Message.conversation_id == cid).order_by(Message.id)
     )).scalars().all()
-    return rows
+
+    # Hydrate user-message file briefs from UploadedFile (we only persist file_ids on send)
+    file_id_set: set[int] = set()
+    for r in rows:
+        if r.role == "user":
+            ids = (r.content_json or {}).get("file_ids") if isinstance(r.content_json, dict) else None
+            if isinstance(ids, list):
+                for x in ids:
+                    if isinstance(x, int):
+                        file_id_set.add(x)
+    file_briefs: dict[int, dict] = {}
+    if file_id_set:
+        ufs = (await db.execute(
+            select(UploadedFile).where(UploadedFile.id.in_(file_id_set))
+        )).scalars().all()
+        import os as _os
+        for u in ufs:
+            file_briefs[u.id] = {
+                "id": u.id, "name": u.name, "size": u.size, "mime": u.mime,
+                "ext": _os.path.splitext(u.name or "")[1].lower(),
+                "parse_status": u.parse_status, "parsed_chars": u.parsed_chars or 0,
+                "download_url": f"/api/files/{u.id}/raw",
+            }
+    out = []
+    for r in rows:
+        item = MessageOut.model_validate(r, from_attributes=True)
+        if r.role == "user" and isinstance(r.content_json, dict):
+            ids = r.content_json.get("file_ids") or []
+            if ids:
+                # rebuild on a *copy* so we don't mutate the ORM-tracked dict
+                cj = dict(r.content_json)
+                cj["files"] = [file_briefs[i] for i in ids if i in file_briefs]
+                item.content_json = cj
+        out.append(item)
+    return out
 
 
 # ---------- Streaming chat ----------
@@ -284,6 +318,15 @@ async def send_message(
         await db.commit()
         raise HTTPException(400, f"输入包含被禁用的模式: {', '.join(h.pattern for h in hits)}")
 
+    # ---- Per-send file count cap (Agent upload policy) ----
+    if payload.file_ids:
+        a = (await db.execute(select(Agent).where(Agent.id == c.agent_id))).scalar_one()
+        policy = a.upload_policy_json or {}
+        max_per_send = int(policy.get("max_files_per_send") or 0)
+        if max_per_send > 0 and len(payload.file_ids) > max_per_send:
+            raise HTTPException(400,
+                f"单次发送最多 {max_per_send} 个文件,本次提交 {len(payload.file_ids)} 个")
+
     # Load history BEFORE inserting the new user message, so it doesn't appear twice
     # (the current turn is passed separately as user_text into the runner)
     ctx = await _load_agent_context(db, c.agent_id, conversation_id=cid)
@@ -293,11 +336,30 @@ async def send_message(
     db.add(user_msg)
     await db.commit()
 
-    # Resolve files
+    # Resolve files: include parsed markdown so the model actually reads contents
     files = []
     if payload.file_ids:
-        rows = (await db.execute(select(UploadedFile).where(UploadedFile.id.in_(payload.file_ids)))).scalars().all()
-        files = [{"name": r.name, "path": r.path} for r in rows]
+        from datetime import datetime as _dt, timezone as _tz
+        rows = (await db.execute(
+            select(UploadedFile).where(
+                UploadedFile.id.in_(payload.file_ids),
+                UploadedFile.user_id == user.id,  # cross-user safeguard
+            )
+        )).scalars().all()
+        for r in rows:
+            files.append({
+                "name": r.name,
+                "path": r.path,
+                "mime": r.mime,
+                "size": r.size,
+                "parse_status": r.parse_status,
+                "parsed_markdown": r.parsed_markdown if r.parse_status == "done" else None,
+                "parse_error": r.parse_error,
+            })
+            # Mark last_used_at so the cleanup task knows this file is still referenced
+            r.last_used_at = _dt.now(_tz.utc)
+        if rows:
+            await db.commit()
 
     async def event_stream():
         # Use a fresh session inside the generator (request-scoped one is closed after return)

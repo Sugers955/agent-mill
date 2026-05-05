@@ -30,7 +30,18 @@ import { computed } from 'vue'
 const props = defineProps<{ file: { name: string; size?: number; mime?: string; ext?: string; download_url: string; preview_url?: string } }>()
 defineEmits<{ (e: 'preview', file: any): void }>()
 
-const PREVIEWABLE = new Set(['html', 'htm', 'pdf', 'md', 'markdown', 'docx', 'txt', 'json', 'csv', 'svg', 'xml', 'js', 'ts', 'css', 'py', 'sql', 'yml', 'yaml'])
+// Only formats the browser can render natively (or we have a light inline renderer for).
+// Office formats (docx/xlsx/pptx) go download-only — preview quality would be poor.
+const PREVIEWABLE = new Set([
+  'html', 'htm',
+  'pdf',
+  'md', 'markdown',
+  'txt', 'log',
+  'json', 'csv', 'xml',
+  'svg',
+  'js', 'ts', 'css', 'py', 'sql', 'yml', 'yaml', 'sh',
+  'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp',
+])
 
 const ext = computed(() => {
   const e = (props.file.ext || props.file.name.split('.').pop() || '').toLowerCase().replace(/^\./, '')

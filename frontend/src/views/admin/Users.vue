@@ -4,26 +4,66 @@
       <span class="page-title">用户管理</span>
       <el-button type="primary" @click="openCreate"><el-icon><Plus /></el-icon>新建用户</el-button>
     </div>
+
+    <div class="filters">
+      <el-input v-model="q" placeholder="用户名/姓名" clearable class="filter-input" @keydown.enter="onFilter" @clear="onFilter" />
+      <el-select v-model="filterRoleId" placeholder="角色" clearable class="filter-select" @change="onFilter">
+        <el-option v-for="r in roles" :key="r.id" :label="r.name" :value="r.id" />
+      </el-select>
+      <el-tree-select
+        v-model="filterDepId"
+        :data="depTree"
+        :props="{ label: 'name', value: 'id', children: 'children' }"
+        node-key="id"
+        check-strictly
+        clearable
+        placeholder="部门"
+        class="filter-select"
+        @change="onFilter"
+      />
+      <el-button type="primary" @click="onFilter">搜索</el-button>
+      <el-button v-if="hasFilter" text type="primary" @click="clearFilters">清空</el-button>
+    </div>
+
     <div class="surface" style="padding:0">
-    <el-table :data="users" stripe>
+    <el-table :data="users.items" stripe v-loading="loading">
       <el-table-column prop="id" label="ID" width="60" />
-      <el-table-column prop="username" label="用户名" />
-      <el-table-column prop="display_name" label="姓名" />
-      <el-table-column label="角色">
-        <template #default="{ row }">{{ row.role.name }}</template>
+      <el-table-column prop="username" label="用户名" min-width="160" show-overflow-tooltip />
+      <el-table-column prop="display_name" label="姓名" min-width="140" show-overflow-tooltip />
+      <el-table-column label="角色" width="140">
+        <template #default="{ row }">{{ row.role?.name }}</template>
+      </el-table-column>
+      <el-table-column label="部门" min-width="180" show-overflow-tooltip>
+        <template #default="{ row }">
+          <span v-if="row.department">{{ row.department.name }}</span>
+          <span v-else class="muted">—</span>
+        </template>
       </el-table-column>
       <el-table-column label="状态" width="100">
         <template #default="{ row }">
           <el-tag :type="row.status === 'active' ? 'success' : 'info'">{{ row.status === 'active' ? '启用' : '停用' }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="200">
+      <el-table-column label="操作" width="160" fixed="right">
         <template #default="{ row }">
           <el-button size="small" text @click="openEdit(row)">编辑</el-button>
           <el-button size="small" text type="danger" @click="onDelete(row)">删除</el-button>
         </template>
       </el-table-column>
     </el-table>
+    </div>
+
+    <div class="pager">
+      <el-pagination
+        background
+        layout="total, sizes, prev, pager, next, jumper"
+        :total="users.total"
+        :page-size="pageSize"
+        :current-page="page"
+        :page-sizes="[20, 50, 100, 200]"
+        @current-change="onPageChange"
+        @size-change="onSizeChange"
+      />
     </div>
 
     <el-dialog v-model="visible" :title="editing ? '编辑用户' : '新建用户'" width="480px">
@@ -40,6 +80,18 @@
             <el-option v-for="r in roles" :key="r.id" :label="r.name" :value="r.id" />
           </el-select>
         </el-form-item>
+        <el-form-item label="部门">
+          <el-tree-select
+            v-model="form.department_id"
+            :data="depTree"
+            :props="{ label: 'name', value: 'id', children: 'children' }"
+            node-key="id"
+            check-strictly
+            clearable
+            placeholder="不选则无所属部门"
+            style="width: 100%"
+          />
+        </el-form-item>
         <el-form-item v-if="editing" label="状态">
           <el-select v-model="form.status">
             <el-option label="启用" value="active" />
@@ -54,17 +106,34 @@
     </el-dialog>
   </div>
 </template>
+
 <script setup lang="ts">
-import { ref, onMounted, reactive } from 'vue'
+import { ref, computed, onMounted, reactive } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { api } from '@/api'
 
-const users = ref<any[]>([])
+const users = ref<{ items: any[]; total: number }>({ items: [], total: 0 })
 const roles = ref<any[]>([])
+const depTree = ref<any[]>([])
 const visible = ref(false)
+const loading = ref(false)
 const editing = ref<any | null>(null)
 const formRef = ref<any>(null)
-const form = reactive<any>({ username: '', password: '', display_name: '', role_id: null, status: 'active' })
+const form = reactive<any>({
+  username: '', password: '', display_name: '',
+  role_id: null as number | null,
+  department_id: null as number | null,
+  status: 'active',
+})
+
+const q = ref('')
+const filterRoleId = ref<number | null>(null)
+const filterDepId = ref<number | null>(null)
+const page = ref(1)
+const pageSize = ref(20)
+
+const hasFilter = computed(() => !!q.value || filterRoleId.value != null || filterDepId.value != null)
+
 const rules = {
   username: [
     { required: true, message: '请输入用户名', trigger: 'blur' },
@@ -81,37 +150,89 @@ const rules = {
 }
 
 async function load() {
-  users.value = await api.users()
-  roles.value = await api.roles()
+  loading.value = true
+  try {
+    const offset = (page.value - 1) * pageSize.value
+    users.value = await api.users({
+      q: q.value.trim() || undefined,
+      role_id: filterRoleId.value ?? undefined,
+      department_id: filterDepId.value ?? undefined,
+      limit: pageSize.value,
+      offset,
+    })
+  } finally {
+    loading.value = false
+  }
 }
-onMounted(load)
+
+onMounted(async () => {
+  ;[roles.value, depTree.value] = await Promise.all([
+    api.roles().catch(() => []),
+    api.departmentTree().catch(() => []),
+  ])
+  await load()
+})
+
+function onFilter() { page.value = 1; load() }
+function clearFilters() {
+  q.value = ''; filterRoleId.value = null; filterDepId.value = null
+  page.value = 1; load()
+}
+function onPageChange(p: number) { page.value = p; load() }
+function onSizeChange(s: number) { pageSize.value = s; page.value = 1; load() }
 
 function openCreate() {
   editing.value = null
-  Object.assign(form, { username: '', password: '', display_name: '', role_id: roles.value[0]?.id, status: 'active' })
+  Object.assign(form, {
+    username: '', password: '', display_name: '',
+    role_id: roles.value[0]?.id ?? null,
+    department_id: null, status: 'active',
+  })
   visible.value = true
 }
+
 function openEdit(row: any) {
   editing.value = row
-  Object.assign(form, { username: row.username, password: '', display_name: row.display_name, role_id: row.role.id, status: row.status })
+  Object.assign(form, {
+    username: row.username, password: '',
+    display_name: row.display_name,
+    role_id: row.role?.id ?? row.role_id,
+    department_id: row.department_id ?? row.department?.id ?? null,
+    status: row.status,
+  })
   visible.value = true
 }
+
 async function onSubmit() {
   const ok = await formRef.value?.validate().catch(() => false)
   if (!ok) return
   try {
     if (editing.value) {
-      const p: any = { display_name: form.display_name, role_id: form.role_id, status: form.status }
+      const p: any = {
+        display_name: form.display_name,
+        role_id: form.role_id,
+        department_id: form.department_id,
+        status: form.status,
+      }
       if (form.password) p.password = form.password
       await api.updateUser(editing.value.id, p)
     } else {
-      await api.createUser({ username: form.username, password: form.password, display_name: form.display_name, role_id: form.role_id })
+      await api.createUser({
+        username: form.username,
+        password: form.password,
+        display_name: form.display_name,
+        role_id: form.role_id,
+        department_id: form.department_id,
+      })
     }
     visible.value = false
     ElMessage.success('保存成功')
     await load()
-  } catch {}
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.detail || '保存失败')
+  }
 }
+
 async function onDelete(row: any) {
   try {
     await ElMessageBox.confirm(`删除 ${row.username}?`, '确认', { type: 'warning' })
@@ -120,3 +241,13 @@ async function onDelete(row: any) {
   } catch {}
 }
 </script>
+
+<style scoped>
+.page-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.page-title { font-size: 18px; font-weight: 600; }
+.filters { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+.filter-input { width: 220px; }
+.filter-select { width: 200px; }
+.muted { color: var(--m-text-tertiary); }
+.pager { display: flex; justify-content: flex-end; margin-top: 12px; }
+</style>

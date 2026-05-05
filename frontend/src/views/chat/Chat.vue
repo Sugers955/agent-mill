@@ -71,6 +71,17 @@
               <!-- main answer -->
               <div v-if="m.content_json?.text || m.role === 'user'" class="bubble">
                 <template v-if="m.role === 'user'">
+                  <div v-if="m.content_json?.files?.length" class="msg-files">
+                    <span
+                      v-for="(f, fi) in m.content_json.files"
+                      :key="fi"
+                      :class="['msg-file-chip', { clickable: canPreview(f) }]"
+                      @click="canPreview(f) && openPreview(f)"
+                    >
+                      <el-icon :size="12"><Paperclip /></el-icon>
+                      {{ f.name }}<span v-if="f.parsed_chars" class="msg-file-meta"> · {{ f.parsed_chars }}字</span>
+                    </span>
+                  </div>
                   <div class="bubble-content" v-html="md.render(m.content_json?.text || '')"></div>
                 </template>
                 <template v-else>
@@ -94,12 +105,30 @@
       <!-- Composer -->
       <div class="composer-wrap">
         <div v-if="chat.pendingFiles.length" class="files-row">
-          <el-tag v-for="f in chat.pendingFiles" :key="f.id" closable @close="removeFile(f)" round>
-            <el-icon><Paperclip /></el-icon> {{ f.name }}
-          </el-tag>
+          <div
+            v-for="f in chat.pendingFiles"
+            :key="f.id"
+            :class="['file-chip', f.parse_status]"
+            :title="f.parse_error || f.name"
+          >
+            <el-icon class="chip-leading" v-if="f.parse_status === 'parsing'" :size="14"><Loading class="spin" /></el-icon>
+            <el-icon class="chip-leading ok" v-else-if="f.parse_status === 'done'" :size="14"><CircleCheckFilled /></el-icon>
+            <el-icon class="chip-leading err" v-else-if="f.parse_status === 'failed'" :size="14"><CircleCloseFilled /></el-icon>
+            <el-icon class="chip-leading" v-else :size="14"><Paperclip /></el-icon>
+            <span class="chip-name">{{ f.name }}</span>
+            <span v-if="f.parse_status === 'done'" class="chip-meta">{{ f.parsed_chars }} 字</span>
+            <span v-else-if="f.parse_status === 'parsing'" class="chip-meta">解析中</span>
+            <button v-else-if="f.parse_status === 'failed'" class="chip-action" @click="retryFile(f)" title="重试">重试</button>
+            <button v-if="canPreview(f)" class="chip-action" @click="openPreview(f)" title="预览">
+              <el-icon :size="12"><View /></el-icon>
+            </button>
+            <button class="chip-close" @click="removeFile(f)" title="移除">
+              <el-icon :size="12"><Close /></el-icon>
+            </button>
+          </div>
         </div>
         <div class="composer">
-          <el-upload :show-file-list="false" :before-upload="onUpload" :auto-upload="false">
+          <el-upload :show-file-list="false" :auto-upload="false" :on-change="onPick" multiple>
             <button class="icon-btn" :disabled="!chat.currentAgent" :title="'上传文件'"><el-icon :size="18"><Paperclip /></el-icon></button>
           </el-upload>
           <el-input
@@ -142,7 +171,6 @@ const sending = ref(false)
 const scrollRef = ref<HTMLElement | null>(null)
 const previewFile = ref<any | null>(null)
 
-function openPreview(f: any) { previewFile.value = f }
 function closePreview() { previewFile.value = null }
 
 onMounted(async () => {
@@ -154,18 +182,79 @@ watch(() => chat.currentConvId, async () => {
   await scrollBottom()
 })
 
-async function onUpload(file: File) {
-  if (!chat.currentConvId) return false
+async function onPick(uploadFile: any) {
+  // el-upload `on-change` fires once per selected file. The actual File is on .raw
+  const file: File | undefined = uploadFile?.raw
+  if (!file) return
+  if (!chat.currentAgent) {
+    ElMessage.warning('请先选择智能体')
+    return
+  }
+  if (!chat.currentConvId) {
+    await chat.newConv()
+  }
   try {
-    const r = await api.uploadFile(file, chat.currentConvId)
+    const r = await api.uploadFile(file, chat.currentConvId!)
     chat.pendingFiles.push(r)
-    ElMessage.success('上传成功')
-  } catch {}
-  return false
+    pollFileStatus(r.id)
+  } catch (e: any) {
+    // axios interceptor already shows ElMessage; nothing else needed
+  }
 }
 
-function removeFile(f: any) {
-  chat.pendingFiles = chat.pendingFiles.filter((x) => x.id !== f.id)
+function pollFileStatus(fileId: number) {
+  const tick = async () => {
+    const idx = chat.pendingFiles.findIndex((x: any) => x.id === fileId)
+    if (idx === -1) return  // user removed it
+    try {
+      const fresh = await api.getFile(fileId)
+      // splice in place to keep reactivity
+      chat.pendingFiles[idx] = { ...chat.pendingFiles[idx], ...fresh }
+      if (fresh.parse_status === 'parsing') {
+        setTimeout(tick, 1500)
+      }
+    } catch {
+      // file gone or transient — stop polling
+    }
+  }
+  setTimeout(tick, 800)
+}
+
+async function retryFile(f: any) {
+  try {
+    const fresh = await api.reparseFile(f.id)
+    const idx = chat.pendingFiles.findIndex((x: any) => x.id === f.id)
+    if (idx >= 0) chat.pendingFiles[idx] = { ...chat.pendingFiles[idx], ...fresh }
+    pollFileStatus(f.id)
+  } catch {}
+}
+
+async function removeFile(f: any) {
+  chat.pendingFiles = chat.pendingFiles.filter((x: any) => x.id !== f.id)
+  // best-effort cleanup on the server
+  try { await api.deleteFile(f.id) } catch {}
+}
+
+const PREVIEWABLE_EXT = new Set([
+  'html', 'htm', 'pdf',
+  'md', 'markdown',
+  'txt', 'log', 'json', 'csv', 'xml',
+  'js', 'ts', 'css', 'py', 'sql', 'yml', 'yaml', 'sh',
+  'svg',
+  'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp',
+])
+
+function canPreview(f: any): boolean {
+  if (!f) return false
+  const e = (f.ext || (f.name || '').split('.').pop() || '').toLowerCase().replace(/^\./, '')
+  return PREVIEWABLE_EXT.has(e)
+}
+
+function openPreview(f: any) {
+  // Composer-uploaded files come from /api/files; their raw bytes live at /api/files/{id}/raw.
+  // Skill-output files have download_url set already. Build the right URL on the fly.
+  const url = f.download_url || (f.id ? `/api/files/${f.id}/raw` : '')
+  previewFile.value = { ...f, download_url: url }
 }
 
 function renderContent(m: any) {
@@ -210,13 +299,30 @@ async function scrollBottom() {
 
 async function send() {
   if (!chat.currentAgent || !input.value.trim()) return
+  // Per-send file count cap (Agent policy)
+  const policy = chat.currentAgent?.upload_policy_json || {}
+  const maxPerSend = Number(policy.max_files_per_send || 0)
+  if (maxPerSend > 0 && chat.pendingFiles.length > maxPerSend) {
+    ElMessage.warning(`单次发送最多 ${maxPerSend} 个文件,请删减后再发送`)
+    return
+  }
+  // Block send while files are still parsing
+  const stillParsing = chat.pendingFiles.filter((f: any) => f.parse_status === 'parsing')
+  if (stillParsing.length) {
+    ElMessage.warning(`还有 ${stillParsing.length} 个文件解析中,请稍候`)
+    return
+  }
   const isFirstMessage = chat.messages.length === 0
   if (!chat.currentConvId) {
     await chat.newConv()
   }
   const text = input.value.trim()
   const fileIds = chat.pendingFiles.map((f) => f.id)
-  chat.messages.push({ _tmp: Date.now(), role: 'user', content_json: { text } })
+  // Snapshot file briefs onto the user message for history rendering
+  const fileBriefs = chat.pendingFiles.map((f: any) => ({
+    id: f.id, name: f.name, size: f.size, parse_status: f.parse_status, parsed_chars: f.parsed_chars,
+  }))
+  chat.messages.push({ _tmp: Date.now(), role: 'user', content_json: { text, files: fileBriefs } })
   chat.messages.push({
     _tmp: Date.now() + 1, role: 'assistant',
     content_json: { text: '' }, tool_calls_json: null,
@@ -451,6 +557,67 @@ function applyEvent(m: any, ev: { type: string; data: any }) {
 
 .files-row { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
 .files-row .el-tag :deep(.el-icon) { margin-right: 4px; vertical-align: -2px; }
+
+/* Composer file chips with parse status */
+.file-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 4px 6px 10px;
+  background: var(--m-bg-soft);
+  border: 1px solid var(--m-border);
+  border-radius: var(--m-radius-pill);
+  font-size: 12px;
+  max-width: 280px;
+  transition: border-color .2s, background .2s;
+}
+.file-chip.parsing { border-color: var(--m-primary); background: var(--m-primary-soft); }
+.file-chip.done { border-color: transparent; background: var(--m-bg-soft); }
+.file-chip.failed { border-color: var(--m-danger); background: #fce8e6; }
+
+.file-chip .chip-leading { color: var(--m-text-secondary); flex-shrink: 0; }
+.file-chip .chip-leading.ok { color: var(--m-success); }
+.file-chip .chip-leading.err { color: var(--m-danger); }
+.file-chip .spin { animation: spin 1s linear infinite; }
+
+.file-chip .chip-name {
+  font-weight: 500; color: var(--m-text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  max-width: 160px;
+}
+.file-chip .chip-meta {
+  font-size: 11px; color: var(--m-text-secondary);
+  flex-shrink: 0;
+}
+.file-chip .chip-action {
+  background: transparent; border: none; cursor: pointer;
+  font-size: 11px; color: var(--m-danger); font-weight: 500;
+  padding: 0 4px;
+}
+.file-chip .chip-close {
+  width: 20px; height: 20px; border-radius: 50%;
+  border: none; background: transparent; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--m-text-secondary);
+  transition: background .15s, color .15s;
+}
+.file-chip .chip-close:hover { background: var(--m-surface-variant); color: var(--m-text); }
+
+/* Inline file chips on user message bubbles */
+.msg-files {
+  display: flex; flex-wrap: wrap; gap: 4px;
+  margin-bottom: 6px;
+}
+.msg-file-chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 8px;
+  background: rgba(255,255,255,.18);
+  border-radius: var(--m-radius-pill);
+  font-size: 11px;
+}
+.msg-file-chip.clickable { cursor: pointer; transition: background .15s; }
+.msg-file-chip.clickable:hover { background: rgba(255,255,255,.32); }
+.msg.assistant .msg-file-chip { background: var(--m-surface-variant); color: var(--m-text-secondary); }
+.msg.assistant .msg-file-chip.clickable:hover { background: var(--m-primary-soft); color: var(--m-primary); }
+.msg-file-meta { opacity: .7; }
 
 .composer {
   display: flex; align-items: flex-end; gap: 8px;

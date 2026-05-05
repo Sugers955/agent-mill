@@ -10,6 +10,8 @@ const routes = [
     children: [
       { path: 'chat', component: () => import('@/views/chat/Chat.vue') },
       { path: 'admin/users', meta: { manage: true }, component: () => import('@/views/admin/Users.vue') },
+      { path: 'admin/roles', meta: { manage: true }, component: () => import('@/views/admin/Roles.vue') },
+      { path: 'admin/departments', meta: { manage: true }, component: () => import('@/views/admin/Departments.vue') },
       { path: 'admin/models', meta: { manage: true }, component: () => import('@/views/admin/Models.vue') },
       { path: 'admin/mcp', meta: { manage: true }, component: () => import('@/views/admin/MCP.vue') },
       { path: 'admin/skills', meta: { manage: true }, component: () => import('@/views/admin/Skills.vue') },

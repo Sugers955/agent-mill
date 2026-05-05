@@ -25,6 +25,14 @@ class Settings(BaseSettings):
     SEED_ADMIN_USERNAME: str = "admin"
     SEED_ADMIN_PASSWORD: str = "admin123"
 
+    # ---- File parsing (MinerU) ----
+    MINERU_MODE: str = "cloud"  # "cloud" | "local" | "disabled"
+    MINERU_BASE_URL: str = "https://mineru.net"
+    MINERU_API_KEY: str = ""
+    MINERU_TIMEOUT_SEC: int = 60
+    # Hard cap on parsed markdown stored / sent to model
+    PARSED_MARKDOWN_HARD_LIMIT: int = 20000
+
 
 @lru_cache
 def get_settings() -> Settings:

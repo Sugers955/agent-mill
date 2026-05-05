@@ -1,4 +1,5 @@
 from __future__ import annotations
+import asyncio
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -6,12 +7,22 @@ from .core.config import settings
 from .api import auth, chat, files
 from .api import downloads as downloads_api
 from .api.admin import users as admin_users, models as admin_models, mcp as admin_mcp, \
-    skills as admin_skills, agents as admin_agents, logs as admin_logs
+    skills as admin_skills, agents as admin_agents, logs as admin_logs, \
+    departments as admin_departments
+from .services.file_cleanup import cleanup_loop
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    yield
+    task = asyncio.create_task(cleanup_loop())
+    try:
+        yield
+    finally:
+        task.cancel()
+        try:
+            await task
+        except (asyncio.CancelledError, Exception):
+            pass
 
 
 app = FastAPI(title="H3C Agent", version="0.1.0", lifespan=lifespan)
@@ -35,6 +46,7 @@ app.include_router(admin_mcp.router)
 app.include_router(admin_skills.router)
 app.include_router(admin_agents.router)
 app.include_router(admin_logs.router)
+app.include_router(admin_departments.router)
 
 
 @app.get("/api/health")

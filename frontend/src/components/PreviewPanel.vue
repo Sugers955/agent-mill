@@ -48,9 +48,6 @@
       <!-- Markdown: render with markdown-it -->
       <div v-else-if="kind === 'md'" class="md-body" v-html="mdHtml"></div>
 
-      <!-- DOCX: docx-preview library -->
-      <div v-else-if="kind === 'docx'" ref="docxRef" class="docx-body"></div>
-
       <!-- Plain text / code -->
       <pre v-else-if="kind === 'text'" class="text-body">{{ textContent }}</pre>
 
@@ -59,17 +56,20 @@
         <img :src="blobUrl" :alt="file?.name" />
       </div>
 
-      <!-- Unsupported -->
+      <!-- Office / unsupported: download-only prompt -->
       <div v-else class="state">
-        <el-icon :size="22"><InfoFilled /></el-icon>
-        <span>该文件类型不支持预览,请下载查看</span>
+        <el-icon :size="28"><Document /></el-icon>
+        <div>该文件类型不支持在线预览</div>
+        <a class="download-link" :href="tokenizedUrl" :download="file?.name">
+          <el-icon :size="14"><Download /></el-icon> 下载查看
+        </a>
       </div>
     </div>
   </aside>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, nextTick } from 'vue'
+import { ref, computed, watch } from 'vue'
 import MarkdownIt from 'markdown-it'
 
 const props = defineProps<{ file: any | null }>()
@@ -82,19 +82,17 @@ const error = ref('')
 const textContent = ref('')
 const mdHtml = ref('')
 const blobUrl = ref<string>('')
-const docxRef = ref<HTMLDivElement | null>(null)
 
 const ext = computed(() => {
   if (!props.file) return ''
   return (props.file.ext || (props.file.name || '').split('.').pop() || '').toLowerCase().replace(/^\./, '')
 })
 
-const kind = computed<'html' | 'pdf' | 'md' | 'docx' | 'text' | 'image' | 'svg' | 'other'>(() => {
+const kind = computed<'html' | 'pdf' | 'md' | 'text' | 'image' | 'svg' | 'other'>(() => {
   const e = ext.value
   if (['html', 'htm'].includes(e)) return 'html'
   if (e === 'pdf') return 'pdf'
   if (['md', 'markdown'].includes(e)) return 'md'
-  if (e === 'docx') return 'docx'
   if (e === 'svg') return 'svg'
   if (['txt', 'json', 'csv', 'xml', 'js', 'ts', 'css', 'py', 'sql', 'yml', 'yaml', 'sh', 'log'].includes(e)) return 'text'
   if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'].includes(e)) return 'image'
@@ -106,7 +104,6 @@ const iconComp = computed(() => {
   if (k === 'html') return 'Monitor'
   if (k === 'pdf') return 'Document'
   if (k === 'md') return 'Notebook'
-  if (k === 'docx') return 'DocumentCopy'
   if (k === 'image') return 'Picture'
   return 'Files'
 })
@@ -130,17 +127,8 @@ watch(() => props.file?.download_url, async (url) => {
     } else if (k === 'html' || k === 'pdf' || k === 'image') {
       const blob = await r.blob()
       blobUrl.value = URL.createObjectURL(blob)
-    } else if (k === 'docx') {
-      const blob = await r.blob()
-      await nextTick()
-      const { renderAsync } = await import('docx-preview')
-      if (docxRef.value) {
-        docxRef.value.innerHTML = ''
-        await renderAsync(blob, docxRef.value, undefined, {
-          className: 'docx', inWrapper: true, ignoreWidth: false, ignoreHeight: false,
-        })
-      }
     }
+    // 'other' kind (Office files etc.) — no preview, the template shows download prompt
   } catch (e: any) {
     error.value = e.message || '加载失败'
   } finally { loading.value = false }
@@ -223,8 +211,7 @@ function openInNewTab() {
 .md-body :deep(table) { border-collapse: collapse; }
 .md-body :deep(th), .md-body :deep(td) { border: 1px solid var(--m-border); padding: 6px 12px; }
 
-.docx-body { padding: 24px 32px; background: var(--m-surface); min-height: 100%; box-sizing: border-box; }
-.docx-body :deep(.docx-wrapper) { background: transparent !important; padding: 0 !important; }
+/* docx-preview removed: Office files use download-only state */
 
 .text-body {
   padding: 16px 24px; margin: 0;
@@ -239,6 +226,18 @@ function openInNewTab() {
   height: 100%; padding: 16px;
 }
 .image-body img { max-width: 100%; max-height: 100%; }
+
+/* Download-only state link */
+.download-link {
+  display: inline-flex; align-items: center; gap: 6px;
+  margin-top: 4px; padding: 8px 14px;
+  background: var(--m-primary); color: #fff;
+  border-radius: var(--m-radius-pill);
+  font-size: 13px; font-weight: 500;
+  text-decoration: none;
+  transition: background .15s;
+}
+.download-link:hover { background: var(--m-primary-hover); }
 
 .svg-body {
   display: flex; align-items: center; justify-content: center;

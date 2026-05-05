@@ -29,13 +29,29 @@ export const api = {
     if (conversation_id) fd.append('conversation_id', String(conversation_id))
     return http.post('/api/files/upload', fd).then((r) => r.data)
   },
+  getFile: (id: number) => http.get(`/api/files/${id}`).then((r) => r.data),
+  reparseFile: (id: number) => http.post(`/api/files/${id}/reparse`).then((r) => r.data),
+  deleteFile: (id: number) => http.delete(`/api/files/${id}`).then((r) => r.data),
 
   // admin
   roles: () => http.get('/api/admin/roles').then((r) => r.data),
-  users: () => http.get('/api/admin/users').then((r) => r.data),
+  createRole: (p: any) => http.post('/api/admin/roles', p).then((r) => r.data),
+  updateRole: (id: number, p: any) => http.patch(`/api/admin/roles/${id}`, p).then((r) => r.data),
+  deleteRole: (id: number) => http.delete(`/api/admin/roles/${id}`).then((r) => r.data),
+
+  users: (params: { q?: string; role_id?: number; department_id?: number; limit?: number; offset?: number } = {}) =>
+    http.get('/api/admin/users', { params: { limit: 20, offset: 0, ...params } }).then((r) => r.data),
   createUser: (p: any) => http.post('/api/admin/users', p).then((r) => r.data),
   updateUser: (id: number, p: any) => http.patch(`/api/admin/users/${id}`, p).then((r) => r.data),
   deleteUser: (id: number) => http.delete(`/api/admin/users/${id}`).then((r) => r.data),
+
+  departments: (q?: string) =>
+    http.get('/api/admin/departments', { params: q ? { q } : {} }).then((r) => r.data),
+  departmentTree: () => http.get('/api/admin/departments/tree').then((r) => r.data),
+  createDepartment: (p: any) => http.post('/api/admin/departments', p).then((r) => r.data),
+  updateDepartment: (id: number, p: any) => http.patch(`/api/admin/departments/${id}`, p).then((r) => r.data),
+  deleteDepartment: (id: number, force = false) =>
+    http.delete(`/api/admin/departments/${id}`, { params: { force } }).then((r) => r.data),
 
   models: () => http.get('/api/admin/models').then((r) => r.data),
   createModel: (p: any) => http.post('/api/admin/models', p).then((r) => r.data),

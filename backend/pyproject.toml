@@ -22,6 +22,11 @@ dependencies = [
     "openai>=1.50",
     "cryptography>=43",
     "aiofiles>=23",
+    # File parsing fallbacks (used when MinerU is disabled or fails)
+    "pypdf>=5.0",
+    "python-docx>=1.1",
+    "openpyxl>=3.1",
+    "beautifulsoup4>=4.12",
 ]
 
 [tool.setuptools.packages.find]

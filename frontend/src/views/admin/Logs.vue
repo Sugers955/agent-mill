@@ -198,10 +198,10 @@ function fmtTime(s: string) {
 
 onMounted(async () => {
   const [us, as] = await Promise.all([
-    api.users().catch(() => []),
+    api.users({ limit: 200 }).catch(() => ({ items: [] })),
     api.agents().catch(() => []),
   ])
-  users.value = us
+  users.value = us.items || []
   agents.value = as
   await load()
 })

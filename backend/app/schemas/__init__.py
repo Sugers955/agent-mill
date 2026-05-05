@@ -32,11 +32,60 @@ class RoleOut(ORM):
     description: str | None = None
 
 
+class RoleIn(BaseModel):
+    code: str = Field(min_length=2, max_length=32)
+    name: str = Field(min_length=1, max_length=64)
+    description: str | None = None
+
+
+class RoleUpdate(BaseModel):
+    name: str | None = None
+    description: str | None = None
+
+
+# ---------- Department ----------
+class DepartmentIn(BaseModel):
+    code: str = Field(min_length=1, max_length=64)
+    name: str = Field(min_length=1, max_length=128)
+    parent_id: int | None = None
+    sort: int = 0
+    description: str | None = None
+
+
+class DepartmentUpdate(BaseModel):
+    code: str | None = None
+    name: str | None = None
+    parent_id: int | None = None
+    sort: int | None = None
+    description: str | None = None
+
+
+class DepartmentOut(ORM):
+    id: int
+    code: str
+    name: str
+    parent_id: int | None = None
+    sort: int = 0
+    description: str | None = None
+
+
+class DepartmentNode(DepartmentOut):
+    children: list["DepartmentNode"] = Field(default_factory=list)
+    user_count: int = 0
+
+
+class DepartmentBrief(BaseModel):
+    id: int
+    name: str
+
+
 class UserOut(ORM):
     id: int
     username: str
     display_name: str | None = None
     role: RoleOut
+    department_id: int | None = None
+    department: DepartmentBrief | None = None
     status: str
     created_at: datetime
 
@@ -46,13 +95,20 @@ class UserCreate(BaseModel):
     password: str = Field(min_length=6)
     display_name: str | None = None
     role_id: int
+    department_id: int | None = None
 
 
 class UserUpdate(BaseModel):
     display_name: str | None = None
     role_id: int | None = None
+    department_id: int | None = None
     status: Literal["active", "disabled"] | None = None
     password: str | None = Field(default=None, min_length=6)
+
+
+class UserPage(BaseModel):
+    items: list[UserOut]
+    total: int
 
 
 # ---------- Model ----------

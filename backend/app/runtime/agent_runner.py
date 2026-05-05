@@ -646,6 +646,36 @@ class AgentRunner:
     }
 
     @staticmethod
+    def _render_attachments(files: list[dict[str, Any]]) -> str:
+        """Render uploaded files as a structured attachment block for the model.
+
+        Includes the parsed markdown when available, otherwise a status note.
+        """
+        if not files:
+            return ""
+        sections: list[str] = []
+        for f in files:
+            name = f.get("name") or "file"
+            status = f.get("parse_status") or "unknown"
+            md = f.get("parsed_markdown")
+            chars = len(md) if isinstance(md, str) else 0
+            head = f"### 📎 {name}"
+            if chars:
+                head += f"  · {chars} 字符"
+            if status == "done" and md:
+                sections.append(f"{head}\n\n```\n{md}\n```")
+            elif status == "parsing":
+                sections.append(f"{head}\n\n(文件正在解析中,本轮无法读取内容)")
+            elif status == "failed":
+                err = f.get("parse_error") or "未知错误"
+                sections.append(f"{head}\n\n(文件解析失败: {err})")
+            else:
+                sections.append(f"{head}\n\n(文件未解析,可向用户说明)")
+        body = "\n\n".join(sections)
+        return ("\n\n---\n\n# 用户上传的附件(已解析为文本,你可以直接引用其中内容)\n\n"
+                f"{body}\n\n---\n")
+
+    @staticmethod
     def normalize_base_url(url: str | None) -> str | None:
         """Append /v1 if base_url has no version suffix (common user mistake)."""
         if not url:
@@ -677,7 +707,7 @@ class AgentRunner:
         system = self._system_prompt() or "You are a helpful assistant."
         prompt = user_text
         if files:
-            prompt += "\n\n[附件]\n" + "\n".join(f"- {f['name']} ({f['path']})" for f in files)
+            prompt += self._render_attachments(files)
 
         tools = self._build_openai_tools()
         messages: list[dict[str, Any]] = [{"role": "system", "content": system}]
@@ -968,7 +998,7 @@ class AgentRunner:
 
         prompt = user_text
         if files:
-            prompt += "\n\n[附件]\n" + "\n".join(f"- {f['name']} ({f['path']})" for f in files)
+            prompt += self._render_attachments(files)
 
         # Prepend prior conversation as a transcript so the model has context.
         # (Claude Agent SDK's query() takes a single prompt; we concatenate.)

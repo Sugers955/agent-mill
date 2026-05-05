@@ -28,9 +28,21 @@ class User(Base, TimestampMixin):
     password_hash: Mapped[str] = mapped_column(String(256))
     display_name: Mapped[str | None] = mapped_column(String(128))
     role_id: Mapped[int] = mapped_column(ForeignKey("roles.id"))
+    department_id: Mapped[int | None] = mapped_column(ForeignKey("departments.id", ondelete="SET NULL"), index=True)
     status: Mapped[str] = mapped_column(String(16), default="active")  # active/disabled
 
     role: Mapped[Role] = relationship(lazy="joined")
+    department: Mapped["Department | None"] = relationship("Department", foreign_keys=[department_id], lazy="joined")
+
+
+class Department(Base, TimestampMixin):
+    __tablename__ = "departments"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    code: Mapped[str] = mapped_column(String(64), unique=True)
+    name: Mapped[str] = mapped_column(String(128))
+    parent_id: Mapped[int | None] = mapped_column(ForeignKey("departments.id", ondelete="SET NULL"), index=True)
+    sort: Mapped[int] = mapped_column(Integer, default=0)
+    description: Mapped[str | None] = mapped_column(String(256))
 
 
 class Model(Base, TimestampMixin):
@@ -131,6 +143,14 @@ class UploadedFile(Base):
     path: Mapped[str] = mapped_column(String(512))
     size: Mapped[int] = mapped_column(BigInteger)
     mime: Mapped[str] = mapped_column(String(128))
+    # Parsed text/markdown for LLM consumption
+    parse_status: Mapped[str] = mapped_column(String(16), default="pending")  # pending/parsing/done/failed
+    parse_engine: Mapped[str | None] = mapped_column(String(32))  # text/mineru-cloud/mineru-local/local-lib
+    parsed_markdown: Mapped[str | None] = mapped_column(Text)
+    parsed_chars: Mapped[int] = mapped_column(Integer, default=0)
+    parse_error: Mapped[str | None] = mapped_column(Text)
+    parsed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

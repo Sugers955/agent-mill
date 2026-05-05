@@ -38,6 +38,12 @@
           <router-link v-if="auth.isAdmin" to="/admin/users" class="rail-item" active-class="active">
             <el-icon :size="20"><User /></el-icon><span>用户</span>
           </router-link>
+          <router-link v-if="auth.isAdmin" to="/admin/departments" class="rail-item" active-class="active">
+            <el-icon :size="20"><OfficeBuilding /></el-icon><span>部门</span>
+          </router-link>
+          <router-link v-if="auth.isAdmin" to="/admin/roles" class="rail-item" active-class="active">
+            <el-icon :size="20"><UserFilled /></el-icon><span>角色</span>
+          </router-link>
           <router-link to="/admin/agents" class="rail-item" active-class="active">
             <el-icon :size="20"><Promotion /></el-icon><span>智能体</span>
           </router-link>

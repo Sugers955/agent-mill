@@ -29,6 +29,24 @@ async def main():
         await conn.exec_driver_sql(
             "ALTER TABLE models ADD COLUMN IF NOT EXISTS extra_params_json JSONB NOT NULL DEFAULT '{}'::jsonb"
         )
+        await conn.exec_driver_sql(
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS department_id INTEGER REFERENCES departments(id) ON DELETE SET NULL"
+        )
+        await conn.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_users_department_id ON users (department_id)"
+        )
+        # uploaded_files: parse fields + lifecycle tracking
+        for stmt in [
+            "ALTER TABLE uploaded_files ADD COLUMN IF NOT EXISTS parse_status VARCHAR(16) NOT NULL DEFAULT 'pending'",
+            "ALTER TABLE uploaded_files ADD COLUMN IF NOT EXISTS parse_engine VARCHAR(32)",
+            "ALTER TABLE uploaded_files ADD COLUMN IF NOT EXISTS parsed_markdown TEXT",
+            "ALTER TABLE uploaded_files ADD COLUMN IF NOT EXISTS parsed_chars INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE uploaded_files ADD COLUMN IF NOT EXISTS parse_error TEXT",
+            "ALTER TABLE uploaded_files ADD COLUMN IF NOT EXISTS parsed_at TIMESTAMPTZ",
+            "ALTER TABLE uploaded_files ADD COLUMN IF NOT EXISTS last_used_at TIMESTAMPTZ",
+            "CREATE INDEX IF NOT EXISTS ix_uploaded_files_last_used_at ON uploaded_files (last_used_at)",
+        ]:
+            await conn.exec_driver_sql(stmt)
     async with SessionLocal() as db:
         # roles
         for r in DEFAULT_ROLES:
