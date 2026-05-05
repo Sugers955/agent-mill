@@ -26,7 +26,8 @@ from .mineru_client import MinerUClient, MinerUError
 logger = logging.getLogger(__name__)
 
 TEXT_EXTS = {".txt", ".md", ".markdown", ".csv", ".json", ".log",
-             ".yaml", ".yml", ".xml", ".html", ".htm", ".tsv", ".sh", ".sql"}
+             ".yaml", ".yml", ".xml", ".html", ".htm", ".svg",
+             ".tsv", ".sh", ".sql"}
 
 # Extensions MinerU handles well (per their docs)
 MINERU_EXTS = {".pdf", ".docx", ".doc", ".pptx", ".ppt", ".xlsx", ".xls",

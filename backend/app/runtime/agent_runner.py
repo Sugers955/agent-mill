@@ -719,33 +719,38 @@ class AgentRunner:
             messages.append({"role": h.role, "content": text})
         messages.append({"role": "user", "content": prompt})
 
-        # ---- Open MCP sessions for the duration of this stream call ----
-        mcp_stack = AsyncExitStack()
-        mcp_sessions: dict[str, Any] = {}      # server_name -> ClientSession
-        mcp_tool_routes: dict[str, tuple[str, str]] = {}  # exposed_tool_name -> (server, raw_tool)
+        # ---- MCP integration: short-lived connections only ----
+        # Long-lived sessions held across an async generator's lifetime trigger
+        # anyio cancel-scope errors when FastAPI streams switch tasks. So we:
+        # 1) Connect once up front *just* to enumerate tools, then disconnect.
+        # 2) On each tool call, open a fresh connection, call, close.
+        # Connect+close are always in the same task, no scope leakage.
+        mcp_tool_routes: dict[str, tuple[str, "MCPConnector"]] = {}  # exposed -> (raw_tool, mcp row)
         for mcp in self.ctx.mcps:
             try:
-                session = await self._open_mcp_session(mcp_stack, mcp)
-                mcp_sessions[mcp.name] = session
-                tools_resp = await session.list_tools()
-                for t in tools_resp.tools:
-                    exposed = self._mcp_tool_name(mcp.name, t.name)
-                    mcp_tool_routes[exposed] = (mcp.name, t.name)
+                tools_list = await self._list_mcp_tools_once(mcp)
+                for t in tools_list:
+                    exposed = self._mcp_tool_name(mcp.name, t["name"])
+                    mcp_tool_routes[exposed] = (t["name"], mcp)
                     tools.append({
                         "type": "function",
                         "function": {
                             "name": exposed,
-                            "description": f"[MCP:{mcp.name}] {t.description or t.name}",
-                            "parameters": getattr(t, "inputSchema", None) or {"type": "object"},
+                            "description": f"[MCP:{mcp.name}] {t.get('description') or t['name']}",
+                            "parameters": t.get("input_schema") or {"type": "object"},
                         },
                     })
             except Exception as e:  # noqa: BLE001
-                yield StreamEvent("error", {"message": f"MCP 服务器 {mcp.name} 连接失败: {e}"})
+                # Silently skip a broken MCP — don't pollute the user-facing transcript.
+                # The model just won't see this server's tools this turn.
+                import logging as _lg
+                _lg.getLogger(__name__).warning(
+                    "MCP %s tool enumeration failed: %s", mcp.name, e
+                )
 
-        try:
-            # multi-turn loop: model may call skill / mcp tools, we execute and feed results back
-            MAX_ITER = 8
-            for _ in range(MAX_ITER):
+        # multi-turn loop: model may call skill / mcp tools, we execute and feed results back
+        MAX_ITER = 8
+        for _ in range(MAX_ITER):
                 create_kwargs: dict[str, Any] = {
                     "model": model.model_id,
                     "messages": messages,
@@ -829,8 +834,8 @@ class AgentRunner:
                     yield StreamEvent("tool_use", {"id": slot["id"], "name": slot["name"], "input": args})
                     try:
                         if slot["name"] in mcp_tool_routes:
-                            server_name, raw_tool = mcp_tool_routes[slot["name"]]
-                            result = await self._call_mcp_tool(mcp_sessions[server_name], raw_tool, args)
+                            raw_tool, mcp_row = mcp_tool_routes[slot["name"]]
+                            result = await self._call_mcp_tool_once(mcp_row, raw_tool, args)
                         else:
                             result = await self._exec_skill(slot["name"], args)
                     except Exception as e:  # noqa: BLE001
@@ -842,9 +847,7 @@ class AgentRunner:
                         "content": result_str,
                     })
 
-            yield StreamEvent("error", {"message": f"工具调用循环超过 {MAX_ITER} 轮,已强制中断"})
-        finally:
-            await mcp_stack.aclose()
+        yield StreamEvent("error", {"message": f"工具调用循环超过 {MAX_ITER} 轮,已强制中断"})
 
     @staticmethod
     def _mcp_tool_name(server: str, tool: str) -> str:
@@ -902,6 +905,82 @@ class AgentRunner:
             "isError": bool(getattr(result, "isError", False)),
             "content": "\n".join(out_parts),
         }
+
+
+    @staticmethod
+    async def _with_mcp_session(mcp, fn):
+        """Open + initialize an MCP session, run `fn(session)`, close. All in one task.
+
+        Avoids the anyio "cancel scope in different task" error that occurs when an
+        AsyncExitStack is held across an async generator's lifetime in FastAPI streams.
+        """
+        from contextlib import AsyncExitStack
+        from mcp import ClientSession
+        cfg = mcp.config_json or {}
+        async with AsyncExitStack() as stack:
+            if mcp.transport == "stdio":
+                from mcp import StdioServerParameters
+                from mcp.client.stdio import stdio_client
+                params = StdioServerParameters(
+                    command=cfg.get("command") or "",
+                    args=cfg.get("args", []) or [],
+                    env=cfg.get("env") or None,
+                )
+                read, write = await stack.enter_async_context(stdio_client(params))
+            elif mcp.transport == "sse":
+                from mcp.client.sse import sse_client
+                read, write = await stack.enter_async_context(
+                    sse_client(cfg.get("url"), headers=cfg.get("headers") or None)
+                )
+            elif mcp.transport == "http":
+                from mcp.client.streamable_http import streamablehttp_client
+                ctx = await stack.enter_async_context(
+                    streamablehttp_client(cfg.get("url"), headers=cfg.get("headers") or None)
+                )
+                read, write = ctx[0], ctx[1]
+            else:
+                raise ValueError(f"unsupported transport: {mcp.transport}")
+            session = await stack.enter_async_context(ClientSession(read, write))
+            await session.initialize()
+            return await fn(session)
+
+    @classmethod
+    async def _list_mcp_tools_once(cls, mcp) -> list[dict[str, Any]]:
+        """One-shot: connect, list tools, disconnect."""
+        async def _do(session):
+            tools_resp = await session.list_tools()
+            return [
+                {
+                    "name": t.name,
+                    "description": t.description or "",
+                    "input_schema": getattr(t, "inputSchema", None) or {},
+                }
+                for t in tools_resp.tools
+            ]
+        return await cls._with_mcp_session(mcp, _do)
+
+    @classmethod
+    async def _call_mcp_tool_once(cls, mcp, tool_name: str, args: dict[str, Any]) -> dict[str, Any]:
+        """One-shot: connect, call tool, disconnect."""
+        # Drop the OpenAI-style {"input": {...}} wrapper if the model added one
+        call_args = args.get("input") if isinstance(args, dict) and "input" in args and len(args) == 1 else args
+        if not isinstance(call_args, dict):
+            call_args = {"value": call_args}
+
+        async def _do(session):
+            result = await session.call_tool(tool_name, call_args)
+            out_parts: list[str] = []
+            for c in (result.content or []):
+                text = getattr(c, "text", None)
+                if text is not None:
+                    out_parts.append(text)
+                else:
+                    out_parts.append(str(c))
+            return {
+                "isError": bool(getattr(result, "isError", False)),
+                "content": "\n".join(out_parts),
+            }
+        return await cls._with_mcp_session(mcp, _do)
 
 
     def _build_skill_sandbox(self) -> "Path | None":

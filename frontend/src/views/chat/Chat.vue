@@ -420,8 +420,10 @@ function applyEvent(m: any, ev: { type: string; data: any }) {
       if (s._start) s.duration_ms = Math.round(performance.now() - s._start)
     }
   } else if (type === 'file') {
-    if (!m._files) m._files = []
-    m._files.push(data)
+    // Reassign array (not just push) so Vue reactivity reliably triggers,
+    // even if the original placeholder was constructed with an inline literal.
+    const next = Array.isArray(m._files) ? [...m._files, data] : [data]
+    m._files = next
   } else if (type === 'error') {
     m.content_json.text += `\n\n[错误] ${data.message}`
   }

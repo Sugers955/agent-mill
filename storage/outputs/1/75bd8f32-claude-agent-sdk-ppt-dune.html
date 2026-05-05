@@ -1,0 +1,1340 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Claude Agent SDK 架构详解 · 技术分享</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;0,800;0,900;1,400;1,700&family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,500;0,8..60,600;1,8..60,400&family=IBM+Plex+Mono:wght@300;400;500;600&family=Noto+Serif+SC:wght@300;400;500;600;700;900&family=Noto+Sans+SC:wght@300;400;500;700;900&display=swap" rel="stylesheet">
+<style>
+  :root{
+    /* ============ 主题色: 🌙 沙丘 ============ */
+    --ink:#1f1a14;
+    --ink-rgb:31,26,20;
+    --paper:#f0e6d2;
+    --paper-rgb:240,230,210;
+    --paper-tint:#e3d7bf;
+    --ink-tint:#2d2620;
+
+    /* ============ 字体(跨主题固定) ============ */
+    --mono:"IBM Plex Mono",ui-monospace,monospace;
+    --serif-en:"Playfair Display","Source Serif 4",Georgia,serif;
+    --serif-body-en:"Source Serif 4",Georgia,serif;
+    --serif-zh:"Noto Serif SC",source-han-serif-sc,serif;
+    --sans-zh:"Noto Sans SC",source-han-sans-sc,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{width:100%;height:100%;overflow:hidden;background:var(--ink);color:var(--paper);font-family:var(--sans-zh);-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+
+  /* ============ WebGL 双背景 ============ */
+  canvas.bg{position:fixed;inset:0;width:100vw;height:100vh;z-index:0;display:block;transition:opacity 1.2s ease}
+  canvas#bg-light{opacity:0}
+  canvas#bg-dark{opacity:1}
+  body.light-bg canvas#bg-light{opacity:1}
+  body.light-bg canvas#bg-dark{opacity:0}
+
+  /* ============ Deck 容器 + 翻页 ============ */
+  #deck{position:fixed;inset:0;width:10000vw;height:100vh;display:flex;flex-wrap:nowrap;transition:transform .9s cubic-bezier(.77,0,.175,1);z-index:10;will-change:transform}
+  .slide{width:100vw;height:100vh;flex:0 0 100vw;position:relative;padding:6vh 6vw 10vh 6vw;display:flex;flex-direction:column;overflow:hidden}
+  .slide.light{color:var(--ink);background:var(--paper)}
+  .slide.dark{color:var(--paper);background:var(--ink)}
+
+  .slide::before{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;transition:background .7s ease}
+  .slide.light::before{background:rgba(var(--paper-rgb),.78);backdrop-filter:blur(3px)}
+  .slide.dark::before{background:rgba(var(--ink-rgb),.78);backdrop-filter:blur(3px)}
+  .slide.hero.light::before{background:rgba(var(--paper-rgb),.16);backdrop-filter:none}
+  .slide.hero.dark::before{background:rgba(var(--ink-rgb),.12);backdrop-filter:none}
+  .slide.hero::after{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none}
+  .slide.hero.light::after{background:linear-gradient(180deg,rgba(var(--paper-rgb),.28) 0%,rgba(var(--paper-rgb),0) 14%,rgba(var(--paper-rgb),0) 86%,rgba(var(--paper-rgb),.28) 100%)}
+  .slide.hero.dark::after{background:linear-gradient(180deg,rgba(var(--ink-rgb),.32) 0%,rgba(var(--ink-rgb),0) 14%,rgba(var(--ink-rgb),0) 86%,rgba(var(--ink-rgb),.32) 100%)}
+
+  /* ============ Magazine chrome ============ */
+  .chrome{display:flex;justify-content:space-between;align-items:flex-start;font-family:var(--mono);font-size:12px;letter-spacing:.18em;text-transform:uppercase;opacity:.7}
+  .chrome .left,.chrome .right{display:flex;gap:2.4em;align-items:center}
+  .chrome .sep{width:40px;height:1px;background:currentColor;opacity:.4}
+  .foot{margin-top:auto;display:flex;justify-content:space-between;align-items:flex-end;font-family:var(--mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;opacity:.55}
+  .foot .title{font-family:var(--serif-zh);font-weight:400;letter-spacing:.05em;text-transform:none;opacity:.75;font-size:13px}
+
+  .tag{display:inline-block;font-family:var(--mono);font-size:11px;letter-spacing:.24em;text-transform:uppercase;padding:6px 14px;border:1px solid currentColor;opacity:.85}
+  .rule{width:100%;height:1px;background:currentColor;opacity:.25;margin:3vh 0}
+  .rule.v{width:1px;height:100%;margin:0}
+
+  /* ============ 字体规则 ============ */
+  .kicker{font-family:var(--mono);font-size:12px;letter-spacing:.3em;text-transform:uppercase;opacity:.6;margin-bottom:2.6vh}
+  .display{font-family:var(--serif-en);font-weight:700;font-size:11vw;line-height:.92;letter-spacing:-.025em}
+  .display-zh{font-family:var(--serif-zh);font-weight:700;font-size:7.8vw;line-height:1.04;letter-spacing:-.005em}
+  .h1-zh{font-family:var(--serif-zh);font-weight:700;font-size:4.6vw;line-height:1.12;letter-spacing:-.005em}
+  .h2-zh{font-family:var(--serif-zh);font-weight:600;font-size:3.2vw;line-height:1.2;letter-spacing:0}
+  .h3-zh{font-family:var(--serif-zh);font-weight:500;font-size:1.9vw;line-height:1.35}
+  .body-zh{font-family:var(--sans-zh);font-weight:400;font-size:max(15px,1.22vw);line-height:1.75;opacity:.82;letter-spacing:.01em}
+  .body-serif{font-family:var(--serif-zh);font-weight:400;font-size:max(15px,1.3vw);line-height:1.65;opacity:.88}
+  .lead{font-family:var(--serif-zh);font-weight:400;font-size:1.9vw;line-height:1.4;opacity:.85}
+  .meta{font-family:var(--mono);font-size:max(11px,.88vw);letter-spacing:.16em;text-transform:uppercase;opacity:.6}
+  .big-num{font-family:var(--serif-en);font-weight:800;font-size:10vw;line-height:.85;letter-spacing:-.03em;font-feature-settings:"tnum"}
+  .mid-num{font-family:var(--serif-en);font-weight:700;font-size:5.5vw;line-height:.88;letter-spacing:-.02em;font-feature-settings:"tnum"}
+  .ghost{font-family:var(--serif-en);font-weight:900;font-size:34vw;line-height:.8;opacity:.06;letter-spacing:-.04em;position:absolute;font-feature-settings:"tnum"}
+  em{font-style:italic;font-family:var(--serif-en)}
+  .en{font-family:var(--serif-en);font-style:italic;font-weight:500}
+
+  /* ============ 布局工具 ============ */
+  .col{display:flex;flex-direction:column;gap:2.4vh}
+  .row{display:flex;align-items:center;gap:3vw}
+  .grid-6{display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(2,1fr);gap:4vw 6vw;flex:1;align-content:center;padding:2vh 0}
+  .grid-9{display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);gap:3vh 4vw;flex:1;align-content:center}
+  .grid-4{display:grid;grid-template-columns:repeat(2,1fr);grid-template-rows:repeat(2,1fr);gap:4vh 6vw;flex:1;align-content:center}
+  .grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:4vw;flex:1;align-content:center}
+  .split{display:grid;grid-template-columns:1fr 1fr;gap:4vw;flex:1;align-items:center}
+  .split-55{display:grid;grid-template-columns:55fr 45fr;gap:5vw;flex:1;align-items:stretch}
+  .fill{flex:1}
+  .center{align-items:center;justify-content:center;text-align:center}
+  .bottom-left{position:absolute;left:6vw;bottom:9vh;max-width:50vw}
+  .bottom-right{position:absolute;right:6vw;bottom:9vh;max-width:50vw;text-align:right}
+  .top-right{position:absolute;right:6vw;top:6vh;text-align:right}
+
+  /* ============ Stat ============ */
+  .stat{display:flex;flex-direction:column;gap:1vh;align-items:flex-start}
+  .stat .n{font-family:var(--serif-en);font-weight:800;font-size:8vw;line-height:.88;letter-spacing:-.03em;font-feature-settings:"tnum"}
+  .stat .l{font-family:var(--sans-zh);font-size:max(13px,1.05vw);opacity:.7;margin-top:1vh;font-weight:400;line-height:1.5}
+  .stat .m{font-family:var(--mono);font-size:10px;letter-spacing:.22em;text-transform:uppercase;opacity:.5;margin-bottom:.2vh}
+
+  /* ============ Callout ============ */
+  .callout{padding:3vh 2.4vw;border-left:3px solid currentColor;position:relative;font-family:var(--serif-zh);font-size:max(15px,1.2vw);line-height:1.55;opacity:.92}
+  .slide.light .callout{background:rgba(var(--ink-rgb),.05)}
+  .slide.dark .callout{background:rgba(var(--paper-rgb),.06)}
+  .callout .cite{display:block;margin-top:1.6vh;font-family:var(--mono);font-size:11px;letter-spacing:.2em;text-transform:uppercase;opacity:.6}
+  .callout .q-big{font-family:var(--serif-zh);font-weight:600;font-size:max(17px,1.6vw);line-height:1.42}
+
+  /* ============ Platform ============ */
+  .plat{display:flex;flex-direction:column;justify-content:flex-end;padding:2vh 0;border-top:1px solid currentColor;border-color:rgba(127,127,127,.35)}
+  .plat .name{font-family:var(--serif-zh);font-weight:700;font-size:1.8vw;margin-bottom:.6vh}
+  .plat .nb{font-family:var(--serif-en);font-weight:700;font-size:3.2vw;letter-spacing:-.02em;line-height:1;font-feature-settings:"tnum"}
+  .plat .sub{font-family:var(--mono);font-size:10px;letter-spacing:.18em;text-transform:uppercase;opacity:.55;margin-top:.6vh}
+  .plat .fill{font-family:var(--sans-zh);font-weight:300;font-size:2.4vw;opacity:.28;letter-spacing:-.01em;line-height:1}
+
+  /* ============ Rowline ============ */
+  .rowline{display:grid;grid-template-columns:1fr 2fr 1fr;gap:2vw;padding:2.2vh 0;border-top:1px solid currentColor;align-items:center;border-color:rgba(127,127,127,.25)}
+  .rowline:last-child{border-bottom:1px solid currentColor;border-color:rgba(127,127,127,.25)}
+  .rowline .k{font-family:var(--serif-zh);font-weight:700;font-size:1.7vw}
+  .rowline .v{font-family:var(--sans-zh);font-weight:400;font-size:max(14px,1.2vw);opacity:.85;line-height:1.55}
+  .rowline .m{font-family:var(--mono);font-size:11px;letter-spacing:.2em;text-transform:uppercase;opacity:.6;justify-self:end}
+
+  /* ============ Pillar ============ */
+  .pillar{display:flex;flex-direction:column;gap:1.8vh}
+  .pillar .ic{font-family:var(--serif-en);font-style:italic;font-size:2.6vw;opacity:.45;font-weight:400}
+  .pillar .t{font-family:var(--serif-zh);font-weight:700;font-size:2.4vw;line-height:1.1}
+  .pillar .d{font-family:var(--sans-zh);font-weight:400;font-size:max(14px,1.1vw);opacity:.76;line-height:1.6}
+
+  /* ============ Signature ============ */
+  .sign{font-family:var(--serif-en);font-style:italic;font-weight:500;font-size:2vw;opacity:.7}
+  .hi{position:relative;display:inline}
+  .slide.dark .hi::after{content:"";position:absolute;left:-.1em;right:-.1em;bottom:-.05em;height:.28em;background:rgba(var(--paper-rgb),.15);z-index:-1}
+  .slide.light .hi::after{content:"";position:absolute;left:-.1em;right:-.1em;bottom:-.05em;height:.28em;background:rgba(var(--ink-rgb),.08);z-index:-1}
+
+  /* ============ Icons ============ */
+  .ico{width:1em;height:1em;display:inline-block;vertical-align:-.12em;stroke:currentColor;fill:none;stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+  .ico-lg,.ico-md,.ico-sm{fill:none;stroke:currentColor;stroke-linecap:round;stroke-linejoin:round}
+  .ico-lg{width:2.6vw;height:2.6vw;stroke-width:1.2;display:inline-block}
+  .ico-md{width:1.8vw;height:1.8vw;stroke-width:1.3;display:inline-block;vertical-align:-.4em}
+  .ico-sm{width:1.1vw;height:1.1vw;stroke-width:1.4;display:inline-block;vertical-align:-.15em;opacity:.7}
+
+  /* ============ Image frame ============ */
+  .frame-img{overflow:hidden;position:relative;background:rgba(0,0,0,.04);box-sizing:border-box;width:100%;border-radius:4px}
+  .slide.dark .frame-img{background:rgba(255,255,255,.04);border-color:rgba(255,255,255,.12)}
+  .frame-img > img{width:100%;height:100%;object-fit:cover;object-position:top center;display:block}
+  .frame-img.fit-contain > img{object-fit:contain;object-position:center center}
+  .frame-img.r-16x9{aspect-ratio:16/9;max-height:64vh}
+  .frame-img.r-16x10{aspect-ratio:16/10;max-height:56vh}
+  .frame-img.r-4x3{aspect-ratio:4/3;max-height:56vh}
+  .frame-img.r-3x2{aspect-ratio:3/2;max-height:46vh}
+  .frame-img.r-3x4{aspect-ratio:3/4;max-height:60vh}
+  .frame-img.r-1x1{aspect-ratio:1/1;max-height:50vh}
+  .frame-img.h-16{height:16vh}
+  .frame-img.h-18{height:18vh}
+  .frame-img.h-22{height:22vh}
+  .frame-img.h-26{height:26vh}
+  .frame-img.h-28{height:28vh}
+  .frame-cap{display:flex;justify-content:space-between;align-items:baseline;gap:1vw;margin-top:.8vh;font-family:var(--mono);font-size:10px;letter-spacing:.22em;text-transform:uppercase;opacity:.72}
+  .frame-cap .pf{font-family:var(--serif-zh);font-weight:600;font-size:max(13px,1vw);letter-spacing:.04em;text-transform:none;opacity:.94}
+  .frame-cap .nb{font-family:var(--serif-en);font-style:italic;font-size:max(15px,1.2vw);letter-spacing:.02em;text-transform:none;opacity:.88}
+  figure.tile{display:flex;flex-direction:column;margin:0;min-width:0}
+  figure.tile > .frame-img{flex:0 0 auto}
+
+  /* ============ 导航 ============ */
+  #nav{position:fixed;left:50%;bottom:2.6vh;transform:translateX(-50%);z-index:30;display:flex;gap:10px;padding:8px 14px;border-radius:999px;background:rgba(0,0,0,.18);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+  #nav .dot{width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,.3);cursor:pointer;transition:all .3s ease;border:0;padding:0}
+  #nav .dot:hover{background:rgba(255,255,255,.5);transform:scale(1.15)}
+  #nav .dot.active{background:rgba(255,255,255,.95);width:22px;border-radius:999px}
+  body.light-bg #nav{background:rgba(255,255,255,.25)}
+  body.light-bg #nav .dot{background:rgba(var(--ink-rgb),.25)}
+  body.light-bg #nav .dot.active{background:rgba(var(--ink-rgb),.9)}
+  #hint{position:fixed;bottom:3vh;right:3vw;z-index:30;font-family:var(--mono);font-size:10px;letter-spacing:.2em;text-transform:uppercase;opacity:.4;mix-blend-mode:difference;color:#aaa}
+
+  /* ============ LAYOUTS API ============ */
+  .frame{flex:1;display:flex;flex-direction:column;min-height:0;overflow:hidden}
+  .frame.grid-2-7-5,.frame.grid-2-6-6,.frame.grid-2-8-4,.frame.grid-3-3,.frame.grid-6{display:grid}
+  .h-hero{font-family:var(--serif-zh);font-weight:900;font-size:10vw;line-height:.96;letter-spacing:-.02em}
+  .h-xl{font-family:var(--serif-zh);font-weight:700;font-size:6.2vw;line-height:1.08;letter-spacing:-.01em}
+  .h-sub{font-family:var(--serif-zh);font-weight:500;font-size:3.1vw;line-height:1.25;letter-spacing:0;opacity:.7}
+  .h-md{font-family:var(--serif-zh);font-weight:600;font-size:2.3vw;line-height:1.3}
+  .h-hero-en,.h-xl-en{font-family:var(--serif-en);letter-spacing:-.025em}
+  .meta-row{display:flex;gap:1.2em;align-items:baseline;flex-wrap:wrap;font-family:var(--mono);font-size:max(12px,.92vw);letter-spacing:.16em;text-transform:uppercase;opacity:.6}
+  .stat-card{display:flex;flex-direction:column;gap:.8vh;align-items:flex-start;padding-top:1.6vh;border-top:1px solid currentColor;border-color:rgba(127,127,127,.3)}
+  .stat-card .stat-label{font-family:var(--mono);font-size:max(10px,.78vw);letter-spacing:.24em;text-transform:uppercase;opacity:.55}
+  .stat-card .stat-nb{font-family:var(--serif-en);font-weight:800;font-size:5.8vw;line-height:.9;letter-spacing:-.03em;font-feature-settings:"tnum";margin-top:.4vh}
+  .stat-card .stat-nb .stat-unit{font-family:var(--serif-zh);font-weight:500;font-size:.38em;letter-spacing:0;opacity:.72;margin-left:.14em}
+  .stat-card .stat-note{font-family:var(--sans-zh);font-weight:400;font-size:max(13px,1.05vw);line-height:1.5;opacity:.72;margin-top:.6vh}
+  .grid-4 .stat-card .stat-nb{font-size:5vw}
+  .grid-3 .stat-card .stat-nb{font-size:6.8vw}
+  .pipeline-section{margin-top:4.4vh;padding-top:2.8vh;border-top:1px dashed rgba(127,127,127,.32)}
+  .pipeline-section:first-of-type{border-top:0;padding-top:0;margin-top:3vh}
+  .pipeline-label{font-family:var(--mono);font-size:max(11px,.85vw);letter-spacing:.24em;text-transform:uppercase;opacity:.62;margin-bottom:2.2vh}
+  .pipeline{display:grid;grid-template-columns:repeat(5,1fr);gap:1.2vw}
+  .pipeline[data-cols="3"]{grid-template-columns:repeat(3,1fr)}
+  .pipeline[data-cols="4"]{grid-template-columns:repeat(4,1fr)}
+  .pipeline[data-cols="6"]{grid-template-columns:repeat(6,1fr)}
+  .step{display:flex;flex-direction:column;gap:.8vh;padding-top:1.4vh;border-top:1px solid currentColor;border-color:rgba(127,127,127,.35)}
+  .step-nb{font-family:var(--serif-en);font-style:italic;font-weight:500;font-size:1.15vw;opacity:.45}
+  .step-title{font-family:var(--sans-zh);font-weight:700;font-size:1.55vw;letter-spacing:.01em;line-height:1.2}
+  .step-desc{font-family:var(--sans-zh);font-weight:400;font-size:max(12px,.95vw);line-height:1.45;opacity:.72}
+  .grid-2-7-5{display:grid;grid-template-columns:7fr 5fr;gap:3vw 4vh;align-items:start}
+  .grid-2-6-6{display:grid;grid-template-columns:1fr 1fr;gap:3vw 4vh;align-items:start}
+  .grid-2-8-4{display:grid;grid-template-columns:8fr 4fr;gap:3vw 4vh;align-items:start}
+  .grid-3-3{display:grid;grid-template-columns:repeat(3,1fr);grid-auto-rows:minmax(0,1fr);gap:2.4vh 2vw}
+  figure.frame-img{margin:0;display:flex;flex-direction:column;min-width:0}
+  .img-cap{display:block;margin-top:.8vh;font-family:var(--mono);font-size:max(10px,.8vw);letter-spacing:.22em;text-transform:uppercase;opacity:.6}
+  .callout-src{display:block;margin-top:1.6vh;font-family:var(--mono);font-size:11px;letter-spacing:.2em;text-transform:uppercase;opacity:.6}
+  .chrome{font-family:var(--mono);font-size:max(11px,.78vw);letter-spacing:.2em;text-transform:uppercase;opacity:.62}
+  .foot{font-family:var(--mono);font-size:max(11px,.78vw);letter-spacing:.18em;text-transform:uppercase;opacity:.5}
+
+  /* ============ 动效系统 ============ */
+  [data-anim]{opacity:1}
+  body.motion-ready [data-anim]{opacity:0}
+  body.motion-ready [data-anim="left"]{transform:translateX(-24px)}
+  body.motion-ready [data-anim="right"]{transform:translateX(24px)}
+  body.motion-ready [data-anim="line"]{opacity:0;transform:translateY(10px)}
+  body.motion-ready [data-animate="pipeline"] [data-anim]{opacity:.15}
+
+  /* ============ 响应式 ============ */
+  @media (max-width:900px){
+    .display{font-size:16vw}
+    .display-zh{font-size:12vw}
+    .h1-zh{font-size:7vw}
+    .h-hero{font-size:14vw}
+    .h-xl{font-size:9vw}
+    .pipeline{grid-template-columns:repeat(2,1fr)}
+    .grid-2-7-5,.grid-2-6-6,.grid-2-8-4{grid-template-columns:1fr}
+  }
+</style>
+</head>
+<body>
+
+<canvas id="bg-dark" class="bg"></canvas>
+<canvas id="bg-light" class="bg"></canvas>
+<div id="hint">← → 翻页 · ESC 索引</div>
+
+<div id="deck">
+
+<!-- ============================================================
+     PAGE 1: 开场封面
+     ============================================================ -->
+<section class="slide hero dark">
+  <div class="chrome">
+    <div>技术分享 · 2026.01</div>
+    <div>Vol.01</div>
+  </div>
+  <div class="frame" style="display:grid; gap:4vh; align-content:center; min-height:80vh">
+    <div class="kicker" data-anim>基于 Claude Agent SDK</div>
+    <h1 class="h-hero" style="white-space:nowrap" data-anim>智能体平台</h1>
+    <h2 class="h-sub" data-anim>Web端 B/S 架构技术架构详解</h2>
+    <p class="lead" style="max-width:60vw" data-anim>
+      从 Skill 三层模型到 Agent 执行链路，从安全加固到双流式架构，全面解析企业级 AI Agent 平台的设计哲学与工程实现。
+    </p>
+    <div class="meta-row" data-anim>
+      <span>架构设计</span><span>·</span><span>Skill Composer · Agent Runtime</span>
+    </div>
+  </div>
+  <div class="foot">
+    <div>Claude Agent SDK 框架详解</div>
+    <div>— 2026 —</div>
+  </div>
+</section>
+
+<!-- ============================================================
+     PAGE 2: 章节幕封 - 整体架构
+     ============================================================ -->
+<section class="slide hero light">
+  <div class="chrome">
+    <div>第一幕 · 整体架构</div>
+    <div>Act I · 02 / 18</div>
+  </div>
+  <div class="frame" style="display:grid; gap:6vh; align-content:center; min-height:80vh">
+    <div class="kicker" data-anim>Act I</div>
+    <h1 class="h-hero" style="font-size:8.5vw" data-anim>四层架构</h1>
+    <p class="lead" style="max-width:55vw" data-anim>
+      SaaS智能体平台的完整技术栈，从用户触达到基础设施的全链路设计。
+    </p>
+  </div>
+  <div class="foot">
+    <div>第一幕引子</div>
+    <div>— · —</div>
+  </div>
+</section>
+
+<!-- ============================================================
+     PAGE 3: 四层架构大图
+     ============================================================ -->
+<section class="slide light">
+  <div class="chrome">
+    <div>架构总览 · Architecture</div>
+    <div>Act I · 03 / 18</div>
+  </div>
+  <div class="frame" style="padding-top:4vh">
+    <div class="kicker" data-anim>SaaS智能体平台</div>
+    <h2 class="h-xl" data-anim>四层架构设计</h2>
+
+    <div class="grid-3-3" style="margin-top:5vh">
+      <div class="pillar" data-anim>
+        <div class="ic">01</div>
+        <div class="t">用户接入层</div>
+        <div class="d">Web应用、Admin控制台、API网关、移动端SDK、第三方集成</div>
+      </div>
+      <div class="pillar" data-anim>
+        <div class="ic">02</div>
+        <div class="t">智能体编排层</div>
+        <div class="d">Skill Composer、Agent Runtime、Flow Engine、Memory系统、Prompt管理</div>
+      </div>
+      <div class="pillar" data-anim>
+        <div class="ic">03</div>
+        <div class="t">能力层</div>
+        <div class="d">原子Skill、复合Skill、MCP工具、多模型引擎、文件解析器</div>
+      </div>
+      <div class="pillar" data-anim>
+        <div class="ic">04</div>
+        <div class="t">基础设施层</div>
+        <div class="d">多租户SaaS、数据持久化、安全审计、监控告警、弹性伸缩</div>
+      </div>
+      <div class="pillar" data-anim>
+        <div class="ic">05</div>
+        <div class="t">技能市场</div>
+        <div class="d">官方Skill商店、第三方生态、版本管理、权限控制、使用统计</div>
+      </div>
+      <div class="pillar" data-anim>
+        <div class="ic">06</div>
+        <div class="t">运营体系</div>
+        <div class="d">内容运营、数据分析、AB测试、用户反馈、持续迭代</div>
+      </div>
+    </div>
+
+    <div class="callout" style="margin-top:5vh" data-anim>
+      核心设计原则：分层解耦、能力复用、安全优先、弹性伸缩
+      <div class="callout-src">— Architecture Principles</div>
+    </div>
+  </div>
+  <div class="foot">
+    <div>Page 03 · 四层架构</div>
+    <div>Architecture Overview</div>
+  </div>
+</section>
+
+<!-- ============================================================
+     PAGE 4: 章节幕封 - Skill体系
+     ============================================================ -->
+<section class="slide hero dark">
+  <div class="chrome">
+    <div>第二幕 · Skill体系</div>
+    <div>Act II · 04 / 18</div>
+  </div>
+  <div class="frame" style="display:grid; gap:6vh; align-content:center; min-height:80vh">
+    <div class="kicker" data-anim>Act II</div>
+    <h1 class="h-hero" style="font-size:8.5vw" data-anim>Skill三层模型</h1>
+    <p class="lead" style="max-width:55vw" data-anim>
+      从原子能力到复合编排，再到业务Agent的完整积木体系。
+    </p>
+  </div>
+  <div class="foot">
+    <div>第二幕引子</div>
+    <div>— · —</div>
+  </div>
+</section>
+
+<!-- ============================================================
+     PAGE 5: Skill三层积木模型
+     ============================================================ -->
+<section class="slide light">
+  <div class="chrome">
+    <div>Skill体系 · Core Design</div>
+    <div>Act II · 05 / 18</div>
+  </div>
+  <div class="frame" style="padding-top:5vh">
+    <div class="kicker" data-anim>三层积木模型</div>
+    <h2 class="h-xl" data-anim>Level 1 → Level 2 → Level 3</h2>
+
+    <div style="margin-top:6vh; display:flex; flex-direction:column; gap:4vh">
+      <!-- Level 1 -->
+      <div class="rowline" data-anim>
+        <div class="k">Level 1<br><span style="opacity:.6; font-size:.85em">原子Skill</span></div>
+        <div class="v">系统内置原子技能（WebSearch、FileParser、Weather等）+ MCP协议接入的外部工具<br>特点：单一功能、无状态、幂等执行、可被复合Skill调用</div>
+        <div class="m">Foundation</div>
+      </div>
+      <!-- Level 2 -->
+      <div class="rowline" data-anim>
+        <div class="k">Level 2<br><span style="opacity:.6; font-size:.85em">复合Skill</span></div>
+        <div class="v">YAML DSL编排多个原子Skill，支持DAG并行、条件分支、变量传递<br>特点：可视化编排、可复用、版本管理、权限控制</div>
+        <div class="m">Composer</div>
+      </div>
+      <!-- Level 3 -->
+      <div class="rowline" data-anim>
+        <div class="k">Level 3<br><span style="opacity:.6; font-size:.85em">业务Agent</span></div>
+        <div class="v">挂载复合Skill的智能体，具备多轮对话、上下文记忆、意图识别能力<br>特点：面向用户、可配置Persona、支持多模型切换</div>
+        <div class="m">Runtime</div>
+      </div>
+    </div>
+
+    <div style="margin-top:5vh; padding:3vh 2vw; border-left:3px solid currentColor" data-anim>
+      <div style="font-family:var(--serif-zh); font-size:max(15px,1.2vw); line-height:1.6">
+        <strong>设计哲学：</strong>像搭积木一样构建AI能力。原子Skill是最小单元，复合Skill是中间层编排，业务Agent是最终交付形态。
+      </div>
+    </div>
+  </div>
+  <div class="foot">
+    <div>Page 05 · Skill三层模型</div>
+    <div>Three-Level Skill Model</div>
+  </div>
+</section>
+
+<!-- ============================================================
+     PAGE 6: Skill文件解剖
+     ============================================================ -->
+<section class="slide dark">
+  <div class="chrome">
+    <div>Skill详解 · Anatomy</div>
+    <div>Act II · 06 / 18</div>
+  </div>
+  <div class="frame" style="padding-top:5vh">
+    <div class="kicker" data-anim>一个Skill包含什么</div>
+    <h2 class="h-xl" data-anim>Skill文件结构</h2>
+
+    <div style="margin-top:5vh; display:grid; grid-template-columns:1fr 1fr; gap:4vw">
+      <div data-anim>
+        <div style="font-family:var(--mono); font-size:11px; letter-spacing:.2em; text-transform:uppercase; opacity:.6; margin-bottom:2vh">skill.yaml</div>
+        <div style="font-family:var(--mono); font-size:max(12px,.9vw); line-height:1.6; opacity:.85; background:rgba(var(--paper-rgb),.06); padding:3vh 2vw; border-radius:4px">
+<span style="opacity:.5"># 元数据</span><br>
+name: travel-planner<br>
+version: 1.2.0<br>
+description: 智能旅行规划助手<br><br>
+<span style="opacity:.5"># 输入输出定义</span><br>
+inputs:<br>
+&nbsp;&nbsp;destination: string<br>
+&nbsp;&nbsp;days: number<br>
+&nbsp;&nbsp;budget: enum<br><br>
+<span style="opacity:.5"># 编排流程 (DAG)</span><br>
+flow:<br>
+&nbsp;&nbsp;- step: search_flights<br>
+&nbsp;&nbsp;&nbsp;&nbsp;tool: web_search<br>
+&nbsp;&nbsp;- step: search_hotels<br>
+&nbsp;&nbsp;&nbsp;&nbsp;tool: web_search<br>
+&nbsp;&nbsp;&nbsp;&nbsp;parallel: true<br><br>
+<span style="opacity:.5"># 输出模板</span><br>
+output:<br>
+&nbsp;&nbsp;format: markdown<br>
+&nbsp;&nbsp;template: ...
+        </div>
+      </div>
+      <div data-anim>
+        <div style="font-family:var(--mono); font-size:11px; letter-spacing:.2em; text-transform:uppercase; opacity:.6; margin-bottom:2vh">SKILL.md</div>
+        <div style="font-family:var(--mono); font-size:max(12px,.9vw); line-height:1.6; opacity:.85; background:rgba(var(--paper-rgb),.06); padding:3vh 2vw; border-radius:4px">
+<span style="opacity:.5">---</span><br>
+<span style="opacity:.5"># 指令(Instruction)</span><br>
+你是一个专业的旅行规划师...<br><br>
+<span style="opacity:.5"># 能力(Capabilities)</span><br>
+- 机票搜索与比价<br>
+- 酒店推荐与预订<br>
+- 行程路线优化<br>
+- 预算分配建议<br><br>
+<span style="opacity:.5"># 规则(Rules)</span><br>
+1. 优先推荐直飞航班<br>
+2. 酒店评分必须≥4.0<br>
+3. 预算控制在±10%以内<br><br>
+<span style="opacity:.5"># 输出格式</span><br>
+使用Markdown表格展示行程...
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="foot">
+    <div>Page 06 · Skill解剖</div>
+    <div>Skill Anatomy</div>
+  </div>
+</section>
+
+<!-- ============================================================
+     PAGE 7: Agent执行链路
+     ============================================================ -->
+<section class="slide light" data-animate="pipeline">
+  <div class="chrome">
+    <div>执行流程 · Execution</div>
+    <div>Act II · 07 / 18</div>
+  </div>
+  <div class="frame" style="padding-top:4vh">
+    <div class="kicker" data-anim>六阶段执行链路</div>
+    <h2 class="h-xl" data-anim>Agent如何识别并执行Skill</h2>
+
+    <div class="pipeline-section">
+      <div class="pipeline-label">Execution Pipeline</div>
+      <div class="pipeline" data-cols="6">
+        <div class="step" data-anim="step">
+          <div class="step-nb">01</div>
+          <div class="step-title">Query分析</div>
+          <div class="step-desc">用户输入语义解析与意图识别</div>
+        </div>
+        <div class="step" data-anim="step">
+          <div class="step-nb">02</div>
+          <div class="step-title">Skill匹配</div>
+          <div class="step-desc">基于Embedding的向量检索</div>
+        </div>
+        <div class="step" data-anim="step">
+          <div class="step-nb">03</div>
+          <div class="step-title">参数填充</div>
+          <div class="step-desc">LLM提取并验证输入参数</div>
+        </div>
+        <div class="step" data-anim="step">
+          <div class="step-nb">04</div>
+          <div class="step-title">执行编排</div>
+          <div class="step-desc">DAG调度原子Skill并行/串行</div>
+        </div>
+        <div class="step" data-anim="step">
+          <div class="step-nb">05</div>
+          <div class="step-title">结果聚合</div>
+          <div class="step-desc">中间结果整合与格式化</div>
+        </div>
+        <div class="step" data-anim="step">
+          <div class="step-nb">06</div>
+          <div class="step-title">输出渲染</div>
+          <div class="step-desc">生成Markdown/HTML并返回</div>
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-top:6vh; display:grid; grid-template-columns:repeat(3,1fr); gap:3vw">
+      <div class="stat-card" data-anim>
+        <div class="stat-label">平均延迟</div>
+        <div class="stat-nb">~800<span class="stat-unit">ms</span></div>
+        <div class="stat-note">单Skill端到端响应</div>
+      </div>
+      <div class="stat-card" data-anim>
+        <div class="stat-label">并发能力</div>
+        <div class="stat-nb">10K+<span class="stat-unit">QPS</span></div>
+        <div class="stat-note">水平扩展支撑</div>
+      </div>
+      <div class="stat-card" data-anim>
+        <div class="stat-label">准确率</div>
+        <div class="stat-nb">94<span class="stat-unit">%</span></div>
+        <div class="stat-note">Skill匹配准确率</div>
+      </div>
+    </div>
+  </div>
+  <div class="foot">
+    <div>Page 07 · 执行链路</div>
+    <div>Execution Flow</div>
+  </div>
+</section>
+
+<!-- ============================================================
+     PAGE 8: Business Profile串联
+     ============================================================ -->
+<section class="slide dark">
+  <div class="chrome">
+    <div>业务串联 · Business Profile</div>
+    <div>Act II · 08 / 18</div>
+  </div>
+  <div class="frame" style="padding-top:5vh">
+    <div class="kicker" data-anim>三层体系的业务映射</div>
+    <h2 class="h-xl" data-anim>Business Profile</h2>
+
+    <div style="margin-top:6vh; display:flex; flex-direction:column; gap:5vh">
+      <div data-anim>
+        <div style="font-family:var(--mono); font-size:11px; letter-spacing:.24em; text-transform:uppercase; opacity:.55; margin-bottom:1.5vh">用户场景层</div>
+        <div style="font-family:var(--serif-zh); font-size:max(17px,1.5vw); line-height:1.5">
+          智能客服、文档审核、代码生成、数据分析、营销文案...
+        </div>
+        <div style="margin-top:1vh; opacity:.7; font-size:max(13px,1vw)">
+          每个Business Profile代表一个垂直业务场景，可被多个Agent共享
+        </div>
+      </div>
+
+      <div style="text-align:center; opacity:.4" data-anim>▼</div>
+
+      <div data-anim>
+        <div style="font-family:var(--mono); font-size:11px; letter-spacing:.24em; text-transform:uppercase; opacity:.55; margin-bottom:1.5vh">Agent编排层</div>
+        <div style="font-family:var(--serif-zh); font-size:max(17px,1.5vw); line-height:1.5">
+          客服Agent挂载「订单查询+物流追踪+售后处理」复合Skill
+        </div>
+      </div>
+
+      <div style="text-align:center; opacity:.4" data-anim>▼</div>
+
+      <div data-anim>
+        <div style="font-family:var(--mono); font-size:11px; letter-spacing:.24em; text-transform:uppercase; opacity:.55; margin-bottom:1.5vh">Skill能力层</div>
+        <div style="font-family:var(--serif-zh); font-size:max(17px,1.5vw); line-height:1.5">
+          订单查询Skill → 数据库原子Skill + LLM总结原子Skill
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="foot">
+    <div>Page 08 · 业务串联</div>
+    <div>Business Profile Mapping</div>
+  </div>
+</section>
+
+<!-- ============================================================
+     PAGE 9: 章节幕封 - 核心特性
+     ============================================================ -->
+<section class="slide hero light">
+  <div class="chrome">
+    <div>第三幕 · 核心特性</div>
+    <div>Act III · 09 / 18</div>
+  </div>
+  <div class="frame" style="display:grid; gap:6vh; align-content:center; min-height:80vh">
+    <div class="kicker" data-anim>Act III</div>
+    <h1 class="h-hero" style="font-size:8.5vw" data-anim>核心特性</h1>
+    <p class="lead" style="max-width:55vw" data-anim>
+      双流式架构、七层安全、异步流式、文件沙箱——企业级Agent的关键差异化能力。
+    </p>
+  </div>
+  <div class="foot">
+    <div>第三幕引子</div>
+    <div>— · —</div>
+  </div>
+</section>
+
+<!-- ============================================================
+     PAGE 10: 双流式架构
+     ============================================================ -->
+<section class="slide light">
+  <div class="chrome">
+    <div>双流架构 · Dual Stream</div>
+    <div>Act III · 10 / 18</div>
+  </div>
+  <div class="frame" style="padding-top:5vh">
+    <div class="kicker" data-anim>模型接入层设计</div>
+    <h2 class="h-xl" data-anim>双流式架构</h2>
+
+    <div style="margin-top:5vh; display:grid; grid-template-columns:1fr 1fr; gap:5vw">
+      <!-- Anthropic路径 -->
+      <div data-anim style="padding:4vh 3vw; border:1px solid rgba(var(--ink-rgb),.15); border-radius:4px">
+        <div style="font-family:var(--mono); font-size:11px; letter-spacing:.2em; text-transform:uppercase; opacity:.6; margin-bottom:2vh">Path A</div>
+        <h3 class="h-md" style="margin-bottom:2vh">Anthropic原生路径</h3>
+        <ul style="font-family:var(--sans-zh); font-size:max(14px,1.1vw); line-height:1.7; padding-left:1.5em; opacity:.85">
+          <li>真·Token-by-Token流式输出</li>
+          <li>原生Tool Use协议</li>
+          <li>Claude 3.5 Sonnet/Haiku</li>
+          <li>Thinking模式支持</li>
+          <li>原生多模态（Vision）</li>
+        </ul>
+        <div style="margin-top:3vh; padding-top:2vh; border-top:1px solid rgba(var(--ink-rgb),.1); font-size:max(12px,.95vw); opacity:.7">
+          最佳体验，推荐用于核心业务场景
+        </div>
+      </div>
+
+      <!-- OpenAI兼容路径 -->
+      <div data-anim style="padding:4vh 3vw; border:1px solid rgba(var(--ink-rgb),.15); border-radius:4px">
+        <div style="font-family:var(--mono); font-size:11px; letter-spacing:.2em; text-transform:uppercase; opacity:.6; margin-bottom:2vh">Path B</div>
+        <h3 class="h-md" style="margin-bottom:2vh">OpenAI兼容路径</h3>
+        <ul style="font-family:var(--sans-zh); font-size:max(14px,1.1vw); line-height:1.7; padding-left:1.5em; opacity:.85">
+          <li>Function Calling循环适配</li>
+          <li>支持GPT-4/GPT-3.5</li>
+          <li>支持DeepSeek-V3/R1</li>
+          <li>支持Qwen/GLM等国产模型</li>
+          <li>统一接口，灵活切换</li>
+        </ul>
+        <div style="margin-top:3vh; padding-top:2vh; border-top:1px solid rgba(var(--ink-rgb),.1); font-size:max(12px,.95vw); opacity:.7">
+          灵活扩展，用于多模型A/B测试
+        </div>
+      </div>
+    </div>
+
+    <div class="callout" style="margin-top:4vh" data-anim>
+      架构优势：统一抽象层屏蔽底层差异，上层业务代码无需关心具体模型，可随时切换或并行调用多个模型。
+      <div class="callout-src">— 模型抽象层设计</div>
+    </div>
+  </div>
+  <div class="foot">
+    <div>Page 10 · 双流式架构</div>
+    <div>Dual-Stream Architecture</div>
+  </div>
+</section>
+
+<!-- ============================================================
+     PAGE 11: 七层安全加固
+     ============================================================ -->
+<section class="slide dark">
+  <div class="chrome">
+    <div>安全机制 · Security</div>
+    <div>Act III · 11 / 18</div>
+  </div>
+  <div class="frame" style="padding-top:4vh">
+    <div class="kicker" data-anim>企业级安全加固</div>
+    <h2 class="h-xl" data-anim>七层防护体系</h2>
+
+    <div style="margin-top:5vh; display:grid; grid-template-columns:repeat(4,1fr); gap:3vw 4vh">
+      <div class="pillar" data-anim>
+        <div class="ic">L1</div>
+        <div class="t">工具白名单</div>
+        <div class="d">禁用Bash/Write/Edit等危险工具，仅允许只读操作</div>
+      </div>
+      <div class="pillar" data-anim>
+        <div class="ic">L2</div>
+        <div class="t">System Prompt加固</div>
+        <div class="d">安全前缀注入，约束Agent行为边界</div>
+      </div>
+      <div class="pillar" data-anim>
+        <div class="ic">L3</div>
+        <div class="t">输入过滤</div>
+        <div class="d">正则表达式过滤敏感指令和注入攻击</div>
+      </div>
+      <div class="pillar" data-anim>
+        <div class="ic">L4</div>
+        <div class="t">静态扫描</div>
+        <div class="d">Skill发布前AST级代码安全分析</div>
+      </div>
+      <div class="pillar" data-anim>
+        <div class="ic">L5</div>
+        <div class="t">文件沙箱</div>
+        <div class="d">cwd隔离机制，限制文件访问范围</div>
+      </div>
+      <div class="pillar" data-anim>
+        <div class="ic">L6</div>
+        <div class="t">下载令牌</div>
+        <div class="d">生成文件附带时效令牌，防止未授权访问</div>
+      </div>
+      <div class="pillar" data-anim>
+        <div class="ic">L7</div>
+        <div class="t">密钥加密</div>
+        <div class="d">API Key分租户加密存储，硬件级隔离</div>
+      </div>
+      <div class="pillar" data-anim>
+        <div class="ic">+</div>
+        <div class="t">审计日志</div>
+        <div class="d">全链路操作追踪，支持合规审计</div>
+      </div>
+    </div>
+  </div>
+  <div class="foot">
+    <div>Page 11 · 安全体系</div>
+    <div>Seven-Layer Security</div>
+  </div>
+</section>
+
+<!-- ============================================================
+     PAGE 12: 异步流式SSE
+     ============================================================ -->
+<section class="slide light">
+  <div class="chrome">
+    <div>流式输出 · Streaming</div>
+    <div>Act III · 12 / 18</div>
+  </div>
+  <div class="frame" style="padding-top:5vh">
+    <div class="kicker" data-anim>用户体验优化</div>
+    <h2 class="h-xl" data-anim>异步流式SSE</h2>
+
+    <div style="margin-top:5vh; display:grid; grid-template-columns:1fr 1fr; gap:5vw">
+      <div data-anim>
+        <h3 class="h-md" style="margin-bottom:3vh">技术实现</h3>
+        <div style="font-family:var(--sans-zh); font-size:max(15px,1.15vw); line-height:1.8; opacity:.85">
+          <p style="margin-bottom:2vh"><strong>Server-Sent Events</strong> 实现真正的实时流式输出，首字响应时间（TTFB）控制在300ms以内。</p>
+          <p style="margin-bottom:2vh"><strong>流式Tool Call</strong> 支持工具执行过程的实时反馈，用户可看到「正在搜索...」「正在计算...」等中间状态。</p>
+          <p><strong>增量渲染</strong> Markdown逐步渲染，代码块语法高亮实时生效，表格边生成边对齐。</p>
+        </div>
+      </div>
+      <div data-anim>
+        <h3 class="h-md" style="margin-bottom:3vh">性能指标</h3>
+        <div style="display:flex; flex-direction:column; gap:3vh">
+          <div class="stat-card" style="border-top:0; padding-top:0">
+            <div class="stat-label">Time To First Byte</div>
+            <div class="stat-nb" style="font-size:4vw">~300<span class="stat-unit">ms</span></div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Token生成速度</div>
+            <div class="stat-nb" style="font-size:4vw">50~80<span class="stat-unit">token/s</span></div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">端到端延迟</div>
+            <div class="stat-nb" style="font-size:4vw">~800<span class="stat-unit">ms</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="foot">
+    <div>Page 12 · 流式SSE</div>
+    <div>Async Streaming</div>
+  </div>
+</section>
+
+<!-- ============================================================
+     PAGE 13: 文件解析与沙箱
+     ============================================================ -->
+<section class="slide dark">
+  <div class="chrome">
+    <div>文件处理 · File System</div>
+    <div>Act III · 13 / 18</div>
+  </div>
+  <div class="frame" style="padding-top:5vh">
+    <div class="kicker" data-anim>多模态能力支撑</div>
+    <h2 class="h-xl" data-anim>文件解析与沙箱</h2>
+
+    <div style="margin-top:5vh; display:grid; grid-template-columns:repeat(3,1fr); gap:4vw">
+      <div data-anim>
+        <div style="font-family:var(--mono); font-size:11px; letter-spacing:.2em; text-transform:uppercase; opacity:.6; margin-bottom:2vh">Parser</div>
+        <h3 class="h-md" style="margin-bottom:2vh">文件解析器</h3>
+        <ul style="font-family:var(--sans-zh); font-size:max(14px,1.05vw); line-height:1.7; padding-left:1.2em; opacity:.85">
+          <li>PDF文本+图片提取</li>
+          <li>Office文档解析</li>
+          <li>Markdown结构化</li>
+          <li>代码文件AST解析</li>
+          <li>图片OCR识别</li>
+        </ul>
+      </div>
+      <div data-anim>
+        <div style="font-family:var(--mono); font-size:11px; letter-spacing:.2em; text-transform:uppercase; opacity:.6; margin-bottom:2vh">Sandbox</div>
+        <h3 class="h-md" style="margin-bottom:2vh">执行沙箱</h3>
+        <ul style="font-family:var(--sans-zh); font-size:max(14px,1.05vw); line-height:1.7; padding-left:1.2em; opacity:.85">
+          <li>cwd工作目录隔离</li>
+          <li>资源配额限制</li>
+          <li>超时自动终止</li>
+          <li>只读文件系统</li>
+          <li>网络访问控制</li>
+        </ul>
+      </div>
+      <div data-anim>
+        <div style="font-family:var(--mono); font-size:11px; letter-spacing:.2em; text-transform:uppercase; opacity:.6; margin-bottom:2vh">Download</div>
+        <h3 class="h-md" style="margin-bottom:2vh">安全下载</h3>
+        <ul style="font-family:var(--sans-zh); font-size:max(14px,1.05vw); line-height:1.7; padding-left:1.2em; opacity:.85">
+          <li>时效令牌签名</li>
+          <li>IP白名单校验</li>
+          <li>下载次数限制</li>
+          <li>病毒扫描集成</li>
+          <li>审计日志记录</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+  <div class="foot">
+    <div>Page 13 · 文件系统</div>
+    <div>File Sandbox</div>
+  </div>
+</section>
+
+<!-- ============================================================
+     PAGE 14: 章节幕封 - 工程实现
+     ============================================================ -->
+<section class="slide hero light">
+  <div class="chrome">
+    <div>第四幕 · 工程实现</div>
+    <div>Act IV · 14 / 18</div>
+  </div>
+  <div class="frame" style="display:grid; gap:6vh; align-content:center; min-height:80vh">
+    <div class="kicker" data-anim>Act IV</div>
+    <h1 class="h-hero" style="font-size:8.5vw" data-anim>工程实现</h1>
+    <p class="lead" style="max-width:55vw" data-anim>
+      目录结构、快速开始、应用场景与版本规划。
+    </p>
+  </div>
+  <div class="foot">
+    <div>第四幕引子</div>
+    <div>— · —</div>
+  </div>
+</section>
+
+<!-- ============================================================
+     PAGE 15: 项目目录结构
+     ============================================================ -->
+<section class="slide dark">
+  <div class="chrome">
+    <div>代码组织 · Project Structure</div>
+    <div>Act IV · 15 / 18</div>
+  </div>
+  <div class="frame" style="padding-top:4vh">
+    <div class="kicker" data-anim>工程目录设计</div>
+    <h2 class="h-xl" data-anim>项目结构</h2>
+
+    <div style="margin-top:4vh; font-family:var(--mono); font-size:max(11px,.85vw); line-height:1.6; opacity:.85; display:grid; grid-template-columns:1fr 1fr; gap:4vw">
+      <div data-anim style="background:rgba(var(--paper-rgb),.04); padding:3vh 2vw; border-radius:4px">
+<span style="opacity:.5"># 后端服务</span><br>
+backend/<br>
+├── app/<br>
+│   ├── api/          <span style="opacity:.5"># REST API路由</span><br>
+│   ├── agents/       <span style="opacity:.5"># Agent Runtime核心</span><br>
+│   ├── skills/       <span style="opacity:.5"># Skill管理</span><br>
+│   ├── models/       <span style="opacity:.5"># 模型接入层</span><br>
+│   ├── mcp/          <span style="opacity:.5"># MCP协议实现</span><br>
+│   └── core/         <span style="opacity:.5"># 共享组件</span><br>
+├── skills/           <span style="opacity:.5"># Skill仓库</span><br>
+├── config/<br>
+└── tests/
+      </div>
+      <div data-anim style="background:rgba(var(--paper-rgb),.04); padding:3vh 2vw; border-radius:4px">
+<span style="opacity:.5"># 前端应用</span><br>
+frontend/<br>
+├── src/<br>
+│   ├── components/   <span style="opacity:.5"># UI组件</span><br>
+│   ├── pages/        <span style="opacity:.5"># 页面路由</span><br>
+│   ├── stores/       <span style="opacity:.5"># 状态管理</span><br>
+│   ├── api/          <span style="opacity:.5"># 接口封装</span><br>
+│   └── utils/<br>
+├── public/<br>
+└── package.json<br><br>
+<span style="opacity:.5"># 部署配置</span><br>
+docker-compose.yml<br>
+k8s/
+      </div>
+    </div>
+  </div>
+  <div class="foot">
+    <div>Page 15 · 目录结构</div>
+    <div>Project Structure</div>
+  </div>
+</section>
+
+<!-- ============================================================
+     PAGE 16: 快速开始
+     ============================================================ -->
+<section class="slide light">
+  <div class="chrome">
+    <div>快速开始 · Quick Start</div>
+    <div>Act IV · 16 / 18</div>
+  </div>
+  <div class="frame" style="padding-top:5vh">
+    <div class="kicker" data-anim>本地开发与部署</div>
+    <h2 class="h-xl" data-anim>Quick Start</h2>
+
+    <div style="margin-top:5vh; display:grid; grid-template-columns:1fr 1fr; gap:5vw">
+      <div data-anim>
+        <h3 class="h-md" style="margin-bottom:3vh">本地开发</h3>
+        <div style="font-family:var(--mono); font-size:max(12px,.9vw); line-height:1.7; background:rgba(var(--ink-rgb),.04); padding:3vh 2vw; border-radius:4px">
+<span style="opacity:.5"># 1. 克隆仓库</span><br>
+git clone https://github.com/...<br>
+cd agent-platform<br><br>
+<span style="opacity:.5"># 2. 环境配置</span><br>
+cp .env.example .env<br>
+<span style="opacity:.5"># 编辑 .env 配置API Key</span><br><br>
+<span style="opacity:.5"># 3. 启动服务</span><br>
+docker-compose up -d<br><br>
+<span style="opacity:.5"># 4. 访问应用</span><br>
+open http://localhost:3000
+        </div>
+      </div>
+      <div data-anim>
+        <h3 class="h-md" style="margin-bottom:3vh">生产部署</h3>
+        <div style="font-family:var(--sans-zh); font-size:max(15px,1.1vw); line-height:1.8; opacity:.85">
+          <p style="margin-bottom:2vh"><strong>Kubernetes</strong> 提供完整的k8s部署清单，支持水平自动扩缩容。</p>
+          <p style="margin-bottom:2vh"><strong>Helm Chart</strong> 一键安装，支持多环境配置覆盖。</p>
+          <p style="margin-bottom:2vh"><strong>监控告警</strong> 内置Prometheus+Grafana监控大盘。</p>
+          <p><strong>日志聚合</strong> ELK/Loki日志收集与检索。</p>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="foot">
+    <div>Page 16 · 快速开始</div>
+    <div>Quick Start</div>
+  </div>
+</section>
+
+<!-- ============================================================
+     PAGE 17: 应用场景
+     ============================================================ -->
+<section class="slide dark">
+  <div class="chrome">
+    <div>应用场景 · Use Cases</div>
+    <div>Act IV · 17 / 18</div>
+  </div>
+  <div class="frame" style="padding-top:4vh">
+    <div class="kicker" data-anim>典型业务场景</div>
+    <h2 class="h-xl" data-anim>应用场景</h2>
+
+    <div class="grid-3-3" style="margin-top:5vh">
+      <div class="pillar" data-anim>
+        <div class="ic">01</div>
+        <div class="t">智能客服</div>
+        <div class="d">7×24小时在线问答，自动处理订单查询、退换货、技术支持</div>
+      </div>
+      <div class="pillar" data-anim>
+        <div class="ic">02</div>
+        <div class="t">文档审核</div>
+        <div class="d">合同条款提取、风险点识别、合规性检查、批量处理</div>
+      </div>
+      <div class="pillar" data-anim>
+        <div class="ic">03</div>
+        <div class="t">代码助手</div>
+        <div class="d">代码生成、重构建议、Bug修复、Code Review自动化</div>
+      </div>
+      <div class="pillar" data-anim>
+        <div class="ic">04</div>
+        <div class="t">数据分析</div>
+        <div class="d">自然语言查询SQL、自动生成报表、趋势预测、可视化</div>
+      </div>
+      <div class="pillar" data-anim>
+        <div class="ic">05</div>
+        <div class="t">营销创作</div>
+        <div class="d">文案生成、多平台适配、A/B测试、效果追踪</div>
+      </div>
+      <div class="pillar" data-anim>
+        <div class="ic">06</div>
+        <div class="t">知识问答</div>
+        <div class="d">企业知识库检索、产品手册查询、培训问答、专家系统</div>
+      </div>
+    </div>
+  </div>
+  <div class="foot">
+    <div>Page 17 · 应用场景</div>
+    <div>Use Cases</div>
+  </div>
+</section>
+
+<!-- ============================================================
+     PAGE 18: 结尾页
+     ============================================================ -->
+<section class="slide hero light">
+  <div class="chrome">
+    <div>结语 · Closing</div>
+    <div>18 / 18</div>
+  </div>
+  <div class="frame" style="display:grid; gap:6vh; align-content:center; min-height:80vh">
+    <div class="kicker" data-anim>The Future</div>
+    <h1 class="h-hero" style="font-size:7vw; line-height:1.1">
+      <span data-anim style="display:block">让AI成为</span>
+      <span data-anim style="display:block">每个人的能力</span>
+    </h1>
+    <p class="lead" style="max-width:55vw" data-anim>
+      从原子Skill到复合编排，从单点工具到智能体生态，我们正在构建一个人人可用的AI能力平台。
+    </p>
+    <div class="meta-row" data-anim>
+      <span>Claude Agent SDK</span><span>·</span><span>智能体平台架构</span>
+    </div>
+  </div>
+  <div class="foot">
+    <div>感谢聆听 · Q&A</div>
+    <div>— · —</div>
+  </div>
+</section>
+
+</div>
+
+<div id="nav"></div>
+
+<script>
+const VS = `attribute vec2 position;void main(){gl_Position=vec4(position,0.0,1.0);}`;
+
+const FS_DARK = `precision highp float;
+uniform vec2 u_resolution;uniform float u_time;uniform vec2 u_mouse;
+vec3 palette(float t,vec3 a,vec3 b,vec3 c,vec3 d){return a+b*cos(6.28318*(c*t+d));}
+void main(){
+  vec2 uv=gl_FragCoord.xy/u_resolution.xy;
+  vec2 p=uv*2.0-1.0;p.x*=u_resolution.x/u_resolution.y;
+  vec2 m=u_mouse*2.0-1.0;m.x*=u_resolution.x/u_resolution.y;
+  float md=length(p-m);
+  float mr=sin(md*15.0-u_time*4.0)*exp(-md*3.0);p+=mr*0.08;
+  vec2 p0=p;
+  for(float i=1.0;i<4.0;i++){
+    p.x+=0.1/i*sin(i*3.0*p.y+u_time*0.4)+0.05;
+    p.y+=0.1/i*cos(i*2.0*p.x+u_time*0.3)-0.05;
+  }
+  float r=length(p);float ang=atan(p.y,p.x);
+  vec3 a=vec3(0.15,0.13,0.10);
+  vec3 b=vec3(0.04,0.04,0.03);
+  vec3 c=vec3(1.0,1.0,1.0);
+  vec3 d=vec3(0.15,0.10,0.08);
+  vec3 col=palette(r*1.5+p0.x*0.5+u_time*0.1,a,b,c,d);
+  float disp=sin(r*25.0-u_time*1.5+ang*2.0)*0.5+0.5;
+  col+=vec3(disp*0.015,disp*0.01,disp*0.02);
+  float hi=pow(sin(p.x*4.0+p.y*3.0+u_time)*0.5+0.5,8.0);
+  col+=hi*0.08;
+  vec3 base=vec3(0.08,0.06,0.04);
+  col=mix(base,col,0.85);
+  gl_FragColor=vec4(col,1.0);
+}`;
+
+const FS_LIGHT = `precision highp float;
+uniform vec2 u_resolution;uniform float u_time;uniform vec2 u_mouse;
+float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
+float noise(vec2 p){
+  vec2 i=floor(p),f=fract(p);
+  float a=hash(i),b=hash(i+vec2(1,0));
+  float c=hash(i+vec2(0,1)),d=hash(i+vec2(1,1));
+  vec2 u=f*f*(3.0-2.0*f);
+  return mix(a,b,u.x)+(c-a)*u.y*(1.0-u.x)+(d-b)*u.x*u.y;
+}
+float fbm(vec2 p){
+  float v=0.0,a=0.5;
+  mat2 m=mat2(0.80,0.60,-0.60,0.80);
+  for(int i=0;i<5;i++){v+=a*noise(p);p=m*p*2.02;a*=0.5;}
+  return v;
+}
+void main(){
+  vec2 uv=gl_FragCoord.xy/u_resolution.xy;
+  vec2 p=uv;p.x*=u_resolution.x/u_resolution.y;
+  vec2 m=u_mouse;m.x*=u_resolution.x/u_resolution.y;
+  vec2 md=p-m;float dl=length(md);
+  p+=normalize(md+vec2(0.0001))*exp(-dl*5.0)*0.03;
+  vec2 q=vec2(fbm(p*1.8+u_time*0.07),fbm(p*1.8+vec2(5.2,1.3)+u_time*0.06));
+  vec2 r=vec2(fbm(p*2.0+q*1.3+vec2(1.7,9.2)+u_time*0.05),
+              fbm(p*2.0+q*1.3+vec2(8.3,2.8)+u_time*0.04));
+  float f=fbm(p*2.2+r*1.5);
+  vec3 sandDark=vec3(0.88,0.82,0.72);
+  vec3 sandLight=vec3(0.96,0.92,0.84);
+  vec3 col=mix(sandDark,sandLight,f);
+  float ph=r.x*2.2+u_time*0.35;
+  col+=vec3(0.78,0.62,0.52)*sin(ph)*0.055;
+  col+=vec3(0.65,0.60,0.50)*sin(ph*0.8+2.0)*0.05;
+  float hl=smoothstep(0.48,0.92,f);
+  col+=hl*0.06;
+  gl_FragColor=vec4(col,1.0);
+}`;
+
+const mouse={x:0.5,y:0.5};
+addEventListener('mousemove',e=>{mouse.x=e.clientX/innerWidth;mouse.y=e.clientY/innerHeight});
+
+function bootGL(canvasId, fsSrc){
+  const canvas=document.getElementById(canvasId);
+  const gl=canvas.getContext('webgl',{alpha:false,antialias:true});
+  if(!gl) return ()=>false;
+  const mk=(t,s)=>{const sh=gl.createShader(t);gl.shaderSource(sh,s);gl.compileShader(sh);return sh};
+  const prog=gl.createProgram();
+  gl.attachShader(prog,mk(gl.VERTEX_SHADER,VS));
+  gl.attachShader(prog,mk(gl.FRAGMENT_SHADER,fsSrc));
+  gl.linkProgram(prog);gl.useProgram(prog);
+  const buf=gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER,buf);
+  gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,1,-1,-1,1,-1,1,1,-1,1,1]),gl.STATIC_DRAW);
+  const pos=gl.getAttribLocation(prog,'position');
+  gl.enableVertexAttribArray(pos);gl.vertexAttribPointer(pos,2,gl.FLOAT,false,0,0);
+  const lRes=gl.getUniformLocation(prog,'u_resolution');
+  const lT=gl.getUniformLocation(prog,'u_time');
+  const lM=gl.getUniformLocation(prog,'u_mouse');
+  const resize=()=>{
+    const d=Math.min(window.devicePixelRatio||1,2);
+    canvas.width=innerWidth*d;canvas.height=innerHeight*d;
+    gl.viewport(0,0,canvas.width,canvas.height);
+  };
+  addEventListener('resize',resize);resize();
+  return (tSec)=>{
+    gl.uniform2f(lRes,canvas.width,canvas.height);
+    gl.uniform1f(lT,tSec);
+    gl.uniform2f(lM,mouse.x,1-mouse.y);
+    gl.drawArrays(gl.TRIANGLES,0,6);
+    return true;
+  };
+}
+const drawDark=bootGL('bg-dark',FS_DARK);
+const drawLight=bootGL('bg-light',FS_LIGHT);
+const t0=Date.now();
+(function loop(){
+  const t=(Date.now()-t0)/1000;
+  drawDark(t);drawLight(t);
+  requestAnimationFrame(loop);
+})();
+
+const deck=document.getElementById('deck');
+const slides=deck.querySelectorAll('.slide');
+const nav=document.getElementById('nav');
+let idx=0,total=slides.length,lock=false;
+deck.style.width=(total*100)+'vw';
+
+slides.forEach((s,i)=>{
+  const b=document.createElement('button');
+  b.className='dot';b.dataset.i=i;b.setAttribute('aria-label','Page '+(i+1));
+  b.onclick=()=>go(i);
+  nav.appendChild(b);
+});
+
+function go(n){
+  if(lock)return;
+  idx=Math.max(0,Math.min(total-1,n));
+  deck.style.transform=`translateX(${-idx*100}vw)`;
+  nav.querySelectorAll('.dot').forEach((d,i)=>d.classList.toggle('active',i===idx));
+  const el=slides[idx];
+  const th=el.dataset.theme || (el.classList.contains('light')?'light':(el.classList.contains('dark')?'dark':'dark'));
+  document.body.classList.toggle('light-bg',th==='light');
+  if(window.__playSlide) setTimeout(()=>window.__playSlide(idx), 450);
+  lock=true;setTimeout(()=>lock=false,700);
+}
+
+let overviewOn=false;
+const ov=document.createElement('div');
+ov.id='overview';
+ov.style.cssText='position:fixed;inset:0;z-index:100;background:rgba(var(--ink-rgb),.92);backdrop-filter:blur(12px);display:none;overflow-y:auto;padding:4vh 4vw';
+document.body.appendChild(ov);
+
+function buildOverview(){
+  ov.innerHTML='';
+  const grid=document.createElement('div');
+  grid.style.cssText='display:grid;grid-template-columns:repeat(4,1fr);gap:2vh 1.6vw;max-width:90vw;margin:0 auto';
+  slides.forEach((s,i)=>{
+    const card=document.createElement('div');
+    card.style.cssText='cursor:pointer;border-radius:6px;overflow:hidden;border:2px solid '+(i===idx?'rgba(var(--paper-rgb),.8)':'rgba(var(--paper-rgb),.15)')+';transition:border-color .2s';
+    card.onmouseenter=()=>card.style.borderColor='rgba(var(--paper-rgb),.6)';
+    card.onmouseleave=()=>card.style.borderColor=i===idx?'rgba(var(--paper-rgb),.8)':'rgba(var(--paper-rgb),.15)';
+    const wrap=document.createElement('div');
+    wrap.style.cssText='width:100%;aspect-ratio:16/9;overflow:hidden;position:relative;pointer-events:none;background:'+(s.classList.contains('light')?'var(--paper)':'var(--ink)');
+    const clone=s.cloneNode(true);
+    clone.style.cssText='width:100vw;height:100vh;transform:scale('+(1/4.5)+');transform-origin:top left;position:absolute;top:0;left:0;pointer-events:none';
+    wrap.appendChild(clone);
+    const label=document.createElement('div');
+    label.style.cssText='padding:6px 10px;font-family:var(--mono);font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--paper);opacity:.7';
+    label.textContent=(i+1)+' / '+total;
+    card.appendChild(wrap);
+    card.appendChild(label);
+    card.onclick=()=>{toggleOverview();go(i)};
+    grid.appendChild(card);
+  });
+  ov.appendChild(grid);
+}
+
+function toggleOverview(){
+  overviewOn=!overviewOn;
+  if(overviewOn){buildOverview();ov.style.display='block';}
+  else{ov.style.display='none';}
+}
+
+addEventListener('keydown',e=>{
+  if(e.key==='Escape'){e.preventDefault();toggleOverview();return;}
+  if(overviewOn)return;
+  if(e.key==='ArrowRight'||e.key==='PageDown'||e.key===' '||e.key==='ArrowDown'){
+    if(window.__pipeAdvance && window.__pipeAdvance()) return;
+    go(idx+1);
+    return;
+  }
+  if(e.key==='ArrowLeft'||e.key==='PageUp'||e.key==='ArrowUp')go(idx-1);
+  if(e.key==='Home')go(0);
+  if(e.key==='End')go(total-1);
+});
+
+let wheelTO=null,wheelAcc=0;
+addEventListener('wheel',e=>{
+  wheelAcc+=e.deltaY+e.deltaX;
+  if(Math.abs(wheelAcc)>50){
+    if(wheelAcc>0 && window.__pipeAdvance && window.__pipeAdvance()){
+      wheelAcc=0;
+    }else{
+      go(idx+(wheelAcc>0?1:-1));wheelAcc=0;
+    }
+  }
+  clearTimeout(wheelTO);wheelTO=setTimeout(()=>wheelAcc=0,150);
+},{passive:true});
+
+let tx=0,ty=0;
+addEventListener('touchstart',e=>{tx=e.touches[0].clientX;ty=e.touches[0].clientY},{passive:true});
+addEventListener('touchend',e=>{
+  const dx=(e.changedTouches[0].clientX-tx);
+  const dy=(e.changedTouches[0].clientY-ty);
+  if(Math.abs(dx)>50&&Math.abs(dx)>Math.abs(dy)){
+    if(dx<0 && window.__pipeAdvance && window.__pipeAdvance()) return;
+    go(idx+(dx<0?1:-1));
+  }
+},{passive:true});
+
+go(0);
+</script>
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+<script>lucide.createIcons();</script>
+
+<script type="module">
+let motion;
+try {
+  motion = await import('./assets/motion.min.js');
+} catch(e1) {
+  try {
+    motion = await import('https://cdn.jsdelivr.net/npm/motion@11.11.17/+esm');
+  } catch(e2) {
+    console.warn('[motion] local + CDN both failed, disabling animations', e1, e2);
+    document.querySelectorAll('[data-anim]').forEach(el=>{el.style.opacity='1';el.style.transform='none'});
+    document.querySelectorAll('[data-animate="pipeline"] [data-anim]').forEach(el=>el.style.opacity='1');
+  }
+}
+
+if(motion){
+  const { animate, stagger } = motion;
+  document.body.classList.add('motion-ready');
+  const EASE = [.22, 1, .36, 1];
+  const slides = [...document.querySelectorAll('.slide')];
+  let pipeStep = -1;
+  let lastIdx = -1;
+
+  function resetAnims(slide){
+    slide.querySelectorAll('[data-anim]').forEach(el=>{
+      el.style.opacity='';
+      el.style.transform='';
+    });
+  }
+
+  function playSlide(i){
+    const slide = slides[i];
+    if(!slide) return;
+    lastIdx = i;
+    const recipe = slide.dataset.animate || (slide.classList.contains('hero') ? 'hero' : 'cascade');
+
+    if(recipe === 'pipeline'){
+      pipeStep = -1;
+      slide.querySelectorAll('[data-anim]').forEach(el=>{
+        el.style.opacity='0.15';
+        el.style.transform='none';
+      });
+      return;
+    }
+
+    resetAnims(slide);
+    const all = [...slide.querySelectorAll('[data-anim]')];
+    if(!all.length) return;
+
+    if(recipe === 'directional'){
+      const lefts  = all.filter(el=>el.dataset.anim==='left');
+      const divs   = all.filter(el=>el.dataset.anim==='divider');
+      const rights = all.filter(el=>el.dataset.anim==='right');
+      const others = all.filter(el=>!['left','right','divider'].includes(el.dataset.anim));
+      if(others.length) animate(others, {opacity:[0,1], y:[12,0]}, {duration:.6, delay:stagger(.1, {start:.15}), easing:EASE});
+      if(lefts.length)  animate(lefts,  {opacity:[0,1], x:[-24,0]}, {duration:.8, delay:.35, easing:EASE});
+      if(divs.length)   animate(divs,   {opacity:[0,.25]},          {duration:.5, delay:.9});
+      if(rights.length) animate(rights, {opacity:[0,1], x:[24,0]},  {duration:.8, delay:1.0, easing:EASE});
+      return;
+    }
+
+    if(recipe === 'quote'){
+      const lines = all.filter(el=>el.dataset.anim==='line');
+      const others = all.filter(el=>el.dataset.anim!=='line');
+      if(others.length) animate(others, {opacity:[0,1], y:[8,0]},    {duration:.6, delay:stagger(.12, {start:.2}), easing:EASE});
+      if(lines.length)  animate(lines,  {opacity:[.35,1], y:[10,0]}, {duration:.8, delay:stagger(.55, {start:.5}), easing:EASE});
+      return;
+    }
+
+    if(recipe === 'hero'){
+      animate(all, {opacity:[0,1], y:[14,0]}, {duration:.9, delay:stagger(.16, {start:.2}), easing:EASE});
+      return;
+    }
+
+    animate(all, {opacity:[0,1], y:[16,0]}, {duration:.75, delay:stagger(.1, {start:.15}), easing:EASE});
+  }
+
+  function pipeAdvance(){
+    const slide = slides[lastIdx];
+    if(!slide || slide.dataset.animate !== 'pipeline') return false;
+    const steps  = [...slide.querySelectorAll('[data-anim="step"]')];
+    const arrows = [...slide.querySelectorAll('[data-anim="arrow"]')];
+    if(pipeStep >= steps.length - 1) return false;
+    pipeStep++;
+    animate(steps[pipeStep], {opacity:[0.15,1], y:[8,0]}, {duration:.5, easing:EASE});
+    if(pipeStep > 0 && arrows[pipeStep-1]){
+      animate(arrows[pipeStep-1], {opacity:[0.15,.7]}, {duration:.3, delay:.15});
+    }
+    return true;
+  }
+
+  window.__playSlide = playSlide;
+  window.__pipeAdvance = pipeAdvance;
+  playSlide(0);
+}
+</script>
+</body>
+</html>

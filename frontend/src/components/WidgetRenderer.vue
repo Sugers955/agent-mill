@@ -37,16 +37,50 @@ const STREAM_MIN_HEIGHT = 450
 const MIN_WIDTH = 350
 const STREAM_MIN_WIDTH = 420
 const MAX_HEIGHT = 8000
+const POST_FINAL_DEAD_ZONE = 12  // ignore growth smaller than this px after finalize
 
 const iframeRef = ref<HTMLIFrameElement | null>(null)
 const iframeReady = ref(false)
-// Streaming starts at STREAM_MIN_HEIGHT; ResizeObserver may grow it as
-// content fills in (never shrink below the floor while streaming).
+// `cachedHeight` is the iframe height — set ONCE per phase:
+//   - on first widget code: predicted from viewBox (or STREAM_MIN_HEIGHT)
+//   - on finalize: measured from the rendered SVG/HTML (one shot)
+// We deliberately ignore continuous ResizeObserver streams during streaming
+// to prevent the panel from flickering as SVG nodes paint in.
 const cachedHeight = ref(STREAM_MIN_HEIGHT)
+const isFinalized = ref(false)
 const lastSentCode = ref('')
 const finalizedCode = ref('')
 
 const srcdoc = computed(() => buildReceiverSrcdoc(getWidgetIframeStyleBlock()))
+
+/** Predict the iframe height from the SVG viewBox so we can lock the panel
+ *  size up front and avoid mid-streaming jumps. */
+function predictHeight(code: string): number {
+  if (!code) return STREAM_MIN_HEIGHT
+  const vb = code.match(/viewBox\s*=\s*["']\s*[\d.]+\s+[\d.]+\s+([\d.]+)\s+([\d.]+)/i)
+  if (vb) {
+    const w = parseFloat(vb[1])
+    const h = parseFloat(vb[2])
+    if (w > 0 && h > 0) {
+      // Container is ~640px wide in the chat bubble (max-width 80% of msg).
+      const containerW = 640
+      const predicted = Math.round(h * (containerW / w))
+      return Math.min(MAX_HEIGHT, Math.max(STREAM_MIN_HEIGHT, predicted))
+    }
+  }
+  // HTML widgets — viewBox not applicable; reserve a comfortable default.
+  return STREAM_MIN_HEIGHT
+}
+
+// Seed predicted height as soon as we have (partial) code.
+cachedHeight.value = predictHeight(props.widgetCode)
+watch(() => props.widgetCode, (code) => {
+  if (!code || isFinalized.value) return
+  // While streaming, only allow the prediction to GROW (e.g., viewBox H got
+  // updated upward). Never shrink. Never react to ResizeObserver.
+  const predicted = predictHeight(code)
+  if (predicted > cachedHeight.value) cachedHeight.value = predicted
+})
 
 const wrapperStyle = computed(() => {
   const widthFloor = props.isStreaming ? STREAM_MIN_WIDTH : MIN_WIDTH
@@ -74,19 +108,27 @@ function pushUpdate() {
   postMessage('widget:update', sanitizeForStreaming(props.widgetCode))
 }
 
+function applyHeight(h: number) {
+  // Hard rule: NEVER react to ResizeObserver during streaming. Panel size is
+  // owned by the predicted height — silence is what kills the flicker.
+  if (props.isStreaming || !isFinalized.value) return
+  // After finalize: allow only upward growth, with a generous dead-zone so
+  // sub-pixel jitter / minor reflows don't cause a visible bump.
+  const next = Math.max(MIN_HEIGHT, Math.min(h, MAX_HEIGHT))
+  if (next <= cachedHeight.value + POST_FINAL_DEAD_ZONE) return
+  cachedHeight.value = next
+  // No 'resize' emit — parent doesn't need to autoscroll for this growth.
+}
+
 function pushFinalize() {
   if (!props.widgetCode) return
   if (finalizedCode.value === props.widgetCode) return
   finalizedCode.value = props.widgetCode
   postMessage('widget:finalize', sanitizeForIframe(props.widgetCode))
-}
-
-function applyHeight(h: number) {
-  const floor = props.isStreaming ? STREAM_MIN_HEIGHT : MIN_HEIGHT
-  const next = Math.max(floor, Math.min(h, MAX_HEIGHT))
-  if (Math.abs(next - cachedHeight.value) < 2) return
-  cachedHeight.value = next
-  emit('resize', next)
+  // Mark finalized AFTER receiver has had a chance to re-render and re-measure.
+  // 600ms covers Chart.js + script init; afterwards applyHeight is allowed
+  // to grow the panel if true content height exceeds the prediction.
+  setTimeout(() => { isFinalized.value = true }, 600)
 }
 
 function handleIframeLoad() {

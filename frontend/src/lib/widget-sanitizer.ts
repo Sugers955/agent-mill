@@ -82,6 +82,9 @@ function _measure(){
 function _h(){
   if(_t)clearTimeout(_t);
   _t=setTimeout(function(){
+    // While streaming, the parent owns the height (predicted from viewBox).
+    // Stay silent to avoid panel flicker / autoscroll noise.
+    if(_streaming)return;
     var h=_measure();
     if(h<60)h=60;
     if(h>0&&h!==_lastH){
@@ -89,7 +92,7 @@ function _h(){
       parent.postMessage({type:'widget:resize',height:h,first:_first},'*');
     }
     _first=false;
-  },40);
+  },80);
 }
 new ResizeObserver(_h).observe(root);
 
