@@ -1,0 +1,79 @@
+<svg width="100%" viewBox="0 0 720 540" xmlns="http://www.w3.org/2000/svg">
+<rect width="100%" height="100%" fill="#ffffff"/>
+<text x="360" y="28" text-anchor="middle" font-size="15" font-weight="600" fill="#202124">SkillPack 的 13 个一等概念</text>
+
+<!-- 元信息 -->
+<rect x="30" y="56" width="210" height="148" rx="10" fill="#e8f0fe" stroke="#aecbfa"/>
+<text x="135" y="78" text-anchor="middle" font-size="12" font-weight="600" fill="#1a73e8">① 元信息 metadata</text>
+<text x="45" y="100" font-size="10" fill="#3c4043">id / version / 行业标签</text>
+<text x="45" y="116" font-size="10" fill="#3c4043">面向角色 / 适用场景描述</text>
+
+<text x="135" y="142" text-anchor="middle" font-size="12" font-weight="600" fill="#1a73e8">② 输入契约 inputs</text>
+<text x="45" y="164" font-size="10" fill="#3c4043">JSON Schema 严格校验</text>
+<text x="45" y="180" font-size="10" fill="#3c4043">required/枚举/正则/示例</text>
+<text x="45" y="196" font-size="10" fill="#3c4043">→ 自动生成 LLM Tool 参数</text>
+
+<!-- 编排 -->
+<rect x="255" y="56" width="210" height="148" rx="10" fill="#fef7e0" stroke="#feefc3"/>
+<text x="360" y="78" text-anchor="middle" font-size="12" font-weight="600" fill="#f29900">③ 编排 orchestration ★</text>
+<text x="270" y="100" font-size="10" fill="#3c4043">type: dag/seq/react/plan</text>
+<text x="270" y="116" font-size="10" fill="#3c4043">nodes / edges / parallel</text>
+
+<text x="360" y="142" text-anchor="middle" font-size="12" font-weight="600" fill="#f29900">④ 节点 node</text>
+<text x="270" y="164" font-size="10" fill="#3c4043">skill / sub_agent / pack</text>
+<text x="270" y="180" font-size="10" fill="#3c4043">when / foreach / retry</text>
+<text x="270" y="196" font-size="10" fill="#3c4043">timeout / model / mcps</text>
+
+<!-- 上下文 -->
+<rect x="480" y="56" width="210" height="148" rx="10" fill="#e6f4ea" stroke="#a8dab5"/>
+<text x="585" y="78" text-anchor="middle" font-size="12" font-weight="600" fill="#1e8e3e">⑤ 共享上下文 context</text>
+<text x="495" y="100" font-size="10" fill="#3c4043">变量传递: ${node.output}</text>
+<text x="495" y="116" font-size="10" fill="#3c4043">scratchpad / memory_scope</text>
+
+<text x="585" y="142" text-anchor="middle" font-size="12" font-weight="600" fill="#1e8e3e">⑥ 子智能体 sub_agents</text>
+<text x="495" y="164" font-size="10" fill="#3c4043">声明专家 Agent 池</text>
+<text x="495" y="180" font-size="10" fill="#3c4043">节点可指派给某个 SubAgent</text>
+<text x="495" y="196" font-size="10" fill="#3c4043">支持并行/辩论/投票</text>
+
+<!-- 模型策略 -->
+<rect x="30" y="216" width="210" height="148" rx="10" fill="#fce8e6" stroke="#f6aea9"/>
+<text x="135" y="238" text-anchor="middle" font-size="12" font-weight="600" fill="#d93025">⑦ 模型策略 models</text>
+<text x="45" y="260" font-size="10" fill="#3c4043">default / 节点级 override</text>
+<text x="45" y="276" font-size="10" fill="#3c4043">fallback 链 / 成本优先</text>
+
+<text x="135" y="302" text-anchor="middle" font-size="12" font-weight="600" fill="#d93025">⑧ MCP 绑定 mcps</text>
+<text x="45" y="324" font-size="10" fill="#3c4043">Pack 级权限白名单</text>
+<text x="45" y="340" font-size="10" fill="#3c4043">节点级精确授权</text>
+<text x="45" y="356" font-size="10" fill="#3c4043">动态租户路由</text>
+
+<!-- 审批/治理 -->
+<rect x="255" y="216" width="210" height="148" rx="10" fill="#f3e8fd" stroke="#d7aefb"/>
+<text x="360" y="238" text-anchor="middle" font-size="12" font-weight="600" fill="#8430ce">⑨ 审批 approval</text>
+<text x="270" y="260" font-size="10" fill="#3c4043">人工审核节点 (HITL)</text>
+<text x="270" y="276" font-size="10" fill="#3c4043">条件触发 / 多级会签</text>
+
+<text x="360" y="302" text-anchor="middle" font-size="12" font-weight="600" fill="#8430ce">⑩ 错误与事务</text>
+<text x="270" y="324" font-size="10" fill="#3c4043">retry / fallback / circuit</text>
+<text x="270" y="340" font-size="10" fill="#3c4043">on_error 分支 / 补偿动作</text>
+<text x="270" y="356" font-size="10" fill="#3c4043">checkpoint 断点续跑</text>
+
+<!-- 产物/治理 -->
+<rect x="480" y="216" width="210" height="148" rx="10" fill="#fff4e5" stroke="#ffd6a5"/>
+<text x="585" y="238" text-anchor="middle" font-size="12" font-weight="600" fill="#cc6600">⑪ 产物 artifacts</text>
+<text x="495" y="260" font-size="10" fill="#3c4043">报告模板 (Jinja/docx)</text>
+<text x="495" y="276" font-size="10" fill="#3c4043">结构化数据 schema</text>
+
+<text x="585" y="302" text-anchor="middle" font-size="12" font-weight="600" fill="#cc6600">⑫ 治理 governance</text>
+<text x="495" y="324" font-size="10" fill="#3c4043">SLA / 限流 / 配额</text>
+<text x="495" y="340" font-size="10" fill="#3c4043">PII 脱敏 / 数据分级</text>
+<text x="495" y="356" font-size="10" fill="#3c4043">全链路审计 audit</text>
+
+<!-- 测试 -->
+<rect x="30" y="376" width="660" height="60" rx="10" fill="#f8f9fa" stroke="#dadce0"/>
+<text x="360" y="398" text-anchor="middle" font-size="12" font-weight="600" fill="#202124">⑬ 测试与评估 tests &amp; evals</text>
+<text x="360" y="418" text-anchor="middle" font-size="10" fill="#5f6368">单元测试用例 (mock MCP) · 端到端样例 · LLM-as-Judge 质量评分 · 回归基线</text>
+
+<rect x="30" y="448" width="660" height="60" rx="10" fill="#e8f0fe" stroke="#aecbfa"/>
+<text x="360" y="470" text-anchor="middle" font-size="12" font-weight="600" fill="#1a73e8">附:运行时元数据(自动生成,不写在 yaml 里)</text>
+<text x="360" y="490" text-anchor="middle" font-size="10" fill="#5f6368">trace_id / span / cost / token / 节点状态 / 中间产物 — 全部进入 ObservabilityHub</text>
+</svg>

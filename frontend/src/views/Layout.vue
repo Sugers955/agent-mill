@@ -6,7 +6,7 @@
         <div class="brand-mark">
           <span class="dot dot-1" /><span class="dot dot-2" /><span class="dot dot-3" /><span class="dot dot-4" />
         </div>
-        <div class="brand-name">H3C Agent</div>
+        <div class="brand-name">Agent Forge</div>
       </div>
 
       <nav class="rail-nav">

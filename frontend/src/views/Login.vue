@@ -8,7 +8,7 @@
         <div class="brand-mark">
           <span class="dot dot-1" /><span class="dot dot-2" /><span class="dot dot-3" /><span class="dot dot-4" />
         </div>
-        <div class="brand-name">H3C Agent</div>
+        <div class="brand-name">Agent Forge</div>
       </div>
       <h2 class="title">欢迎回来</h2>
       <p class="subtitle">登录后开始与你的智能体协作</p>
@@ -24,8 +24,6 @@
           登录
         </el-button>
       </el-form>
-
-      <div class="footer-hint">默认账号 <code>admin</code> / <code>admin123</code></div>
     </div>
   </div>
 </template>

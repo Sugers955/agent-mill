@@ -608,9 +608,35 @@ function applyEvent(m: any, ev: { type: string; data: any }) {
 .bubble :deep(p) { margin: 4px 0; }
 .bubble :deep(p:first-child) { margin-top: 0; }
 .bubble :deep(p:last-child) { margin-bottom: 0; }
-.bubble :deep(pre) { background: #202124; color: #e8eaed; padding: 14px; border-radius: var(--m-radius); overflow: auto; font-size: 13px; margin: 8px 0; }
-.bubble :deep(code) { font-family: 'Roboto Mono', monospace; }
-.bubble :deep(:not(pre) > code) { background: var(--m-surface-variant); padding: 1px 6px; border-radius: 4px; font-size: 13px; }
+.bubble :deep(pre) {
+  background: #f8f9fa;
+  color: #202124;
+  padding: 14px 16px;
+  border-radius: var(--m-radius);
+  border: 1px solid #e8eaed;
+  overflow: auto;
+  max-height: 420px;
+  font-size: 13px;
+  line-height: 1.55;
+  margin: 8px 0;
+  font-family: 'Roboto Mono', ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+  scrollbar-width: thin;
+  scrollbar-color: #c4c7c5 transparent;
+}
+.bubble :deep(pre)::-webkit-scrollbar { width: 8px; height: 8px; }
+.bubble :deep(pre)::-webkit-scrollbar-track { background: transparent; }
+.bubble :deep(pre)::-webkit-scrollbar-thumb { background: #dadce0; border-radius: 4px; }
+.bubble :deep(pre)::-webkit-scrollbar-thumb:hover { background: #bdc1c6; }
+.bubble :deep(pre code) { background: transparent; color: inherit; padding: 0; font-size: inherit; }
+.bubble :deep(code) { font-family: 'Roboto Mono', ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace; }
+.bubble :deep(:not(pre) > code) {
+  background: #f1f3f4;
+  color: #c5221f;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 13px;
+  border: 1px solid #e8eaed;
+}
 .msg.user .bubble :deep(:not(pre) > code) { background: rgba(255,255,255,.18); }
 
 .tool-trace-list { margin-top: 8px; }

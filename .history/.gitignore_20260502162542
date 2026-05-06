@@ -13,6 +13,6 @@ storage/uploads/*
 !storage/uploads/.gitkeep
 storage/skills/*
 !storage/skills/.gitkeep
-storage/outputs/*
+
 .DS_Store
 *.log

@@ -1,4 +1,4 @@
-# H3C Agent 智能体平台
+# Agent Forge 智能体平台
 
 基于 [Claude Agent SDK](https://code.claude.com/docs/en/agent-sdk) 的企业级 SaaS 智能体平台。一套后台,支持多个智能体,管理员配置、普通用户使用,提供完整的 Skill / MCP / 模型 / 文件 / 安全 / 审计 闭环。
 
@@ -174,7 +174,25 @@ PDF/DOCX/PPTX/XLSX/PNG/JPG → MinerU(云端/私有化)→ 失败回退本地库
 
 ## 四、快速开始
 
-### 4.1 本地开发
+### 4.1 一键启动 / 停止（推荐日常开发使用）
+
+```bash
+# 在仓库根目录
+./start.sh        # 启动 backend (8000) + frontend (5173)
+./stop.sh         # 停止所有服务
+
+# 实时查看日志
+tail -f /tmp/agent-forge-backend.log
+tail -f /tmp/agent-forge-frontend.log
+```
+
+`start.sh` 会先 kill 旧进程，再以 `--reload` 模式起后端、`vite dev` 起前端。脚本要求：
+- 后端虚拟环境已建在 `backend/.venv/`
+- 前端 `node_modules` 已 `npm install` 过
+
+首次跑请先看 4.2 完成依赖安装与建表。
+
+### 4.2 本地开发（首次安装）
 
 ```bash
 # 1. PostgreSQL
@@ -184,6 +202,7 @@ docker run -d --name h3c-pg -p 5432:5432 \
 
 # 2. 后端
 cd backend
+python -m venv .venv && source .venv/bin/activate
 cp .env.example .env
 # 编辑 .env 填入:
 #   - JWT_SECRET / ENCRYPTION_KEY (任意 base64 32 字节)
@@ -198,14 +217,14 @@ npm install
 npm run dev                        # http://localhost:5173
 ```
 
-### 4.2 Docker Compose
+### 4.3 Docker Compose
 
 ```bash
 docker-compose up -d --build
 docker-compose exec api python -m app.db.init_db
 ```
 
-### 4.3 关键 env
+### 4.4 关键 env
 
 ```bash
 # 数据库

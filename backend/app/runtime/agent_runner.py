@@ -41,11 +41,11 @@ _WIDGET_GUIDANCE = """
 widget_code 是 JSON 字符串：所有引号转义为 `\\"`，换行转义为 `\\n`，不要 DOCTYPE/html/head/body。
 
 ### 使用 widget 时的要求
-- **首要任务且唯一交付方式**：调用 `load_widget_guidelines` 后，必须使用 `show-widget` 围栏在聊天里直接渲染——这是用户看到的"动态生图过程"
+- **首要任务**：调用 `load_widget_guidelines` 后，必须使用 `show-widget` 围栏在聊天里直接渲染——这是用户看到的"动态生图过程"
 - 不要在普通 ` ``` ` 代码块里输出 `<svg>` 源码（前端不会渲染）
 - 渲染完成后，请在围栏外补充 2-4 句中文文字说明图的要点，让回答有完整闭环
-- **`save_output_file` 在本轮被禁用**：调用 `load_widget_guidelines` 后，本轮任何 `save_output_file` 调用都会被系统拒绝；不要尝试把图保存为文件，专心用 `show-widget` 渲染即可
-- 顺序：调用 `load_widget_guidelines` → 立即在下一段助手文本里输出 ` ```show-widget ` 围栏 → 围栏闭合后再写文字总结
+- **可选**：渲染完成后，如果用户后续可能下载，可以再调用 `save_output_file` 把同一份代码存成 .html / .svg 文件（系统会自动识别 widget JSON 包裹并解出真实的 HTML / SVG，不会保存成不可预览的 .txt）；不需要下载时不必调用
+- 顺序：调用 `load_widget_guidelines` → 输出 ` ```show-widget ` 围栏 → 围栏闭合后再写文字 → （可选）调用 `save_output_file` 提供下载
 
 ### 何时该走 Skill 而不是 widget
 - 当智能体命中或者已加载了画图相关的 Skill（如 `jiagoutu`），按 Skill 自身的 SKILL.md 指令执行，此时Skill是主导，widget是辅助手段（比如 Skill 产出图的源码，交给 widget 渲染）
@@ -107,6 +107,35 @@ def _agent_has_drawing_skill(skills: list[Skill]) -> bool:
         if any(h.lower() in haystack for h in _DRAWING_SKILL_HINTS):
             return True
     return False
+
+
+def _move_scripts_to_end(html: str) -> str:
+    """Move every <script>...</script> block to just before </body>.
+
+    Mirrors the widget iframe receiver's "DOM first, scripts last" strategy.
+    Without this, a saved standalone .html file breaks when the model wrote
+    its <script> at the top of the body — DOM elements referenced via
+    document.getElementById are not yet in the tree, and onclick handlers
+    can fire before the script's let/const declarations finish.
+
+    Idempotent: if there's no <body>, returns html unchanged.
+    """
+    import re as _re
+    if "<body" not in html.lower():
+        return html
+    # Extract all <script>...</script> blocks (with their attrs)
+    script_pattern = _re.compile(r"<script\b[^>]*>[\s\S]*?</script>", _re.IGNORECASE)
+    scripts = script_pattern.findall(html)
+    if not scripts:
+        return html
+    stripped = script_pattern.sub("", html)
+    # Insert scripts just before </body>; if no </body>, append at end.
+    body_close = _re.search(r"</body\s*>", stripped, _re.IGNORECASE)
+    block = "\n" + "\n".join(scripts) + "\n"
+    if body_close:
+        i = body_close.start()
+        return stripped[:i] + block + stripped[i:]
+    return stripped + block
 
 
 def _prefix_mcp_actions(ui_schema: dict[str, Any], mcp_name: str) -> None:
@@ -223,13 +252,11 @@ class AgentRunner:
                                 follow them in the same conversation. (mirrors Anthropic
                                 Skill's "load-on-demand" semantics for OpenAI providers)
 
-        When `user_text` is a visualization request AND no drawing-related skill
-        is loaded, we suppress the file-output tools (`save_output_file`,
-        `run_skill_script`) so the model can only deliver via the show-widget
-        fence — file saving competes with rendering and steals the model's
-        attention.
+        `save_output_file` and `run_skill_script` are always registered so the
+        user gets a downloadable file card whenever the model calls them. The
+        widget pipeline still owns the in-chat rendering — for widget content
+        the save handler unwraps the JSON envelope into a real .html/.svg.
         """
-        viz_only = bool(user_text) and _wants_widget(user_text) and not _agent_has_drawing_skill(self.ctx.skills)
         tools: list[dict[str, Any]] = []
         for s in self.ctx.skills:
             tools.append({
@@ -266,49 +293,48 @@ class AgentRunner:
                     },
                 },
             })
-        # Universal output-file save tool. Suppressed when this turn is a
-        # visualization request — file saving competes with widget rendering
-        # and the model tends to skip the fence if a save tool is offered.
-        if not viz_only:
-            tools.append({
-                "type": "function",
-                "function": {
-                    "name": "save_output_file",
-                    "description": (
-                        "保存生成的文件并返回下载链接。"
-                        "适用于 PPT(.html)、文档(.md/.docx)、PDF、代码、报告等任何需要交付给用户的产物。"
-                        "调用本工具后,前端会显示一张文件卡片,用户可下载或在右侧分屏预览。"
-                        "禁止把大段 HTML/Markdown/代码直接打字给用户 —— 一律改为调用本工具保存。"
-                    ),
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "filename": {
-                                "type": "string",
-                                "description": "文件名,带扩展名。如 'agent-intro.html'、'report.md'、'output.pdf'",
-                            },
-                            "content": {
-                                "type": "string",
-                                "description": "完整文件内容(文本)。二进制请用 base64 编码并将 mime 设置正确。",
-                            },
-                            "mime": {
-                                "type": "string",
-                                "description": "可选,MIME 类型。留空自动按扩展名推断",
-                            },
-                            "encoding": {
-                                "type": "string",
-                                "description": "content 编码: 'utf-8' (默认) 或 'base64'",
-                            },
+        # Universal output-file save tool — always available so the user gets
+        # a downloadable file card whenever the model calls it. For widget JSON
+        # content the save handler unwraps to a real .html/.svg automatically.
+        tools.append({
+            "type": "function",
+            "function": {
+                "name": "save_output_file",
+                "description": (
+                    "保存生成的文件并返回下载链接。"
+                    "适用于 PPT(.html)、文档(.md/.docx)、PDF、代码、报告等任何需要交付给用户的产物。"
+                    "调用本工具后,前端会显示一张文件卡片,用户可下载或在右侧分屏预览。"
+                    "禁止把大段 HTML/Markdown/代码直接打字给用户 —— 一律改为调用本工具保存。"
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "filename": {
+                            "type": "string",
+                            "description": "文件名,带扩展名。如 'agent-intro.html'、'report.md'、'output.pdf'",
                         },
-                        "required": ["filename", "content"],
+                        "content": {
+                            "type": "string",
+                            "description": "完整文件内容(文本)。二进制请用 base64 编码并将 mime 设置正确。",
+                        },
+                        "mime": {
+                            "type": "string",
+                            "description": "可选,MIME 类型。留空自动按扩展名推断",
+                        },
+                        "encoding": {
+                            "type": "string",
+                            "description": "content 编码: 'utf-8' (默认) 或 'base64'",
+                        },
                     },
+                    "required": ["filename", "content"],
                 },
-            })
+            },
+        })
         # Run a python script that's bundled inside a path-based atomic skill.
         # We call it as an in-process function (no Bash needed). The script must
         # expose a callable named `generate` (preferred) or be importable; we run
         # it inside a sandboxed namespace so we don't pollute the parent process.
-        if not viz_only and any(s.type == "atomic" and (s.source_json or {}).get("path") for s in self.ctx.skills):
+        if any(s.type == "atomic" and (s.source_json or {}).get("path") for s in self.ctx.skills):
             tools.append({
                 "type": "function",
                 "function": {
@@ -495,23 +521,18 @@ class AgentRunner:
                             "<title>" + (parsed.get("title") or "widget") + "</title>"
                             "</head><body style='margin:0'>" + content + "</body></html>"
                         )
+                    # Reorder scripts: move every <script>...</script> to
+                    # just before </body>. The widget iframe receiver does
+                    # this implicitly (DOM first, scripts appended last).
+                    # Without reordering, models that put a <script> at the
+                    # top of the body (typical pattern) will fail in a saved
+                    # standalone file because onclick="foo()" handlers fire
+                    # before `foo` is defined OR `let`/`const` vars are in TDZ.
+                    if new_ext == ".html":
+                        content = _move_scripts_to_end(content)
         except (json.JSONDecodeError, KeyError, TypeError):
             pass  # fall through to normal save
 
-        # Hard rule: once the widget pipeline is active for this turn (model
-        # called load_widget_guidelines), save_output_file is disabled. Render
-        # is the only acceptable delivery channel — file saving competes with
-        # rendering and the model tends to skip the fence if a save succeeds.
-        if self._widget_pipeline_active:
-            return {
-                "skipped": True,
-                "reason": (
-                    "save_output_file is disabled this turn because you "
-                    "called load_widget_guidelines. Output a ```show-widget "
-                    "fenced block in your next assistant message to render "
-                    "the diagram in the chat. Do not retry save_output_file."
-                ),
-            }
         from pathlib import Path as _Path
         import re as _re
         import uuid as _uuid

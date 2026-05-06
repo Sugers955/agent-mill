@@ -1,0 +1,192 @@
+# ============== ① 元信息 ==============
+apiVersion: pack/v1
+kind: SkillPack
+metadata:
+  id: pack.police.case_investigation
+  version: 2.1.0
+  name: "案件核查方案包"
+  description: "输入案件编号,自动完成关联人车物核查、风险评分、报告生成"
+  industry: [public_security]
+  intents: ["核查案件", "案件初查", "案件复核"]   # 用于 Agent 路由
+  owners: ["security-team@xxx"]
+
+# ============== ② 输入契约 ==============
+inputs:
+  case_id:
+    type: string
+    pattern: "^\\d{4}-[A-Z]-\\d{4}$"
+    required: true
+    example: "2024-A-1023"
+  scope:
+    type: enum
+    values: [basic, full, deep]
+    default: basic
+    description: "核查深度,deep 需领导审批"
+
+# ============== ⑦ 模型策略(Pack 级默认 + 节点级覆盖)==============
+models:
+  default: claude-sonnet-4
+  fallback: [claude-haiku, gpt-4o-mini]    # 主模型失败降级
+  routing:
+    - when: "${node.cost_sensitive}"
+      use: claude-haiku
+    - when: "${node.kind == 'reasoning'}"
+      use: claude-opus-4
+
+# ============== ⑧ MCP 白名单(Pack 级安全边界)==============
+mcps:
+  allowed:
+    - mcp.gov.population_db
+    - mcp.gov.vehicle_db
+    - mcp.police.case_db
+    - mcp.gov.credit
+  # 节点未声明的 MCP 一律禁止调用,防止 Skill 越权
+
+# ============== ⑥ 子智能体声明 ==============
+sub_agents:
+  - id: profiler
+    role: "嫌疑人画像专家"
+    model: claude-opus-4
+    system_prompt_ref: prompts/profiler.md
+  - id: legal_reviewer
+    role: "法律合规审查员"
+    model: claude-sonnet-4
+    system_prompt_ref: prompts/legal.md
+
+# ============== ③④ 编排 + 节点(核心)==============
+orchestration:
+  type: dag
+  
+  nodes:
+    # ---- 节点 1: 拉案件 ----
+    - id: fetch_case
+      kind: skill
+      skill: skill.police.get_case_detail
+      inputs: { case_id: "${inputs.case_id}" }
+      mcps: [mcp.police.case_db]
+      timeout: 5s
+      retry: { max: 3, backoff: exponential }
+
+    # ---- 节点 2: 并发核查(展示并行 + foreach + 子智能体)----
+    - id: parallel_check
+      kind: parallel
+      branches:
+        # 2a. 对每个嫌疑人画像(子智能体 + foreach)
+        - id: suspect_profiles
+          kind: sub_agent
+          agent: profiler
+          foreach: "${fetch_case.output.suspects}"
+          concurrency: 5                    # 最多 5 个并发
+          inputs: { person: "${item}" }
+          mcps: [mcp.gov.population_db, mcp.gov.credit]
+
+        # 2b. 关联历史案件(普通 skill)
+        - id: history
+          kind: skill
+          skill: skill.police.related_cases
+          inputs: { keywords: "${fetch_case.output.tags}" }
+
+        # 2c. 条件触发(只有有车辆才查)
+        - id: vehicle_check
+          kind: skill
+          skill: skill.gov.query_vehicle
+          when: "${fetch_case.output.has_vehicle == true}"
+          mcps: [mcp.gov.vehicle_db]
+          on_error: { action: continue, default: null }    # 错了不阻塞主流程
+
+    # ---- 节点 3: 风险评分(指定推理模型)----
+    - id: risk_analysis
+      kind: skill
+      skill: skill.ai.risk_scoring
+      model: claude-opus-4                 # 节点级覆盖,用更强的推理模型
+      inputs:
+        case: "${fetch_case.output}"
+        profiles: "${suspect_profiles.output}"
+        history: "${history.output}"
+
+    # ---- 节点 4: 人工审批(关键!)----
+    - id: approval_gate
+      kind: approval
+      when: "${inputs.scope == 'deep' || risk_analysis.output.score > 80}"
+      approvers:
+        - role: team_leader                # 角色而非具体人
+        - role: legal_officer
+          required_when: "${risk_analysis.output.legal_risk > 0.5}"
+      mode: any                            # any | all | sequential
+      timeout: 24h
+      on_timeout: { action: escalate, to: department_head }
+      ui:
+        title: "案件深度核查需要审批"
+        show_fields: [fetch_case, risk_analysis]   # 审批人能看到啥
+
+    # ---- 节点 5: 法律合规复核(子智能体,辩论模式)----
+    - id: legal_review
+      kind: sub_agent
+      agent: legal_reviewer
+      inputs: { findings: "${risk_analysis.output}" }
+
+    # ---- 节点 6: 生成报告(产物渲染)----
+    - id: report
+      kind: artifact
+      template: templates/case_report.j2
+      formats: [pdf, docx]
+      data:
+        case: "${fetch_case.output}"
+        risk: "${risk_analysis.output}"
+        legal: "${legal_review.output}"
+
+  # ---- 显式定义依赖(也可由变量引用自动推导)----
+  edges:
+    - { from: fetch_case, to: parallel_check }
+    - { from: parallel_check, to: risk_analysis }
+    - { from: risk_analysis, to: approval_gate }
+    - { from: approval_gate, to: legal_review, when: "approved" }
+    - { from: legal_review, to: report }
+
+# ============== ⑩ 全局错误处理 ==============
+error_handling:
+  on_skill_failure: retry_then_fallback
+  circuit_breaker: { failure_threshold: 5, window: 1m }
+  compensations:                           # Saga 模式补偿动作
+    - on_node: report
+      action: skill.common.cleanup_temp_files
+
+# ============== ⑪ 产物 ==============
+artifacts:
+  - id: final_report
+    type: report
+    primary: true
+  - id: structured_summary
+    type: json
+    schema: schemas/case_summary.json
+
+# ============== ⑫ 治理 ==============
+governance:
+  sla: { p95_latency_ms: 60000, success_rate: 0.99 }
+  rate_limit: { per_user: "10/hour", per_tenant: "1000/day" }
+  data_classification: confidential
+  pii_handling:
+    auto_mask: [id_card, phone]
+    log_redaction: true
+  audit:
+    level: full                           # 每个节点的输入输出全留痕
+    retention: 3y
+
+# ============== ⑬ 测试 ==============
+tests:
+  - name: "基础核查冒烟"
+    inputs: { case_id: "2024-A-0001", scope: basic }
+    mocks:
+      mcp.police.case_db: fixtures/case_001.json
+    asserts:
+      - "$.report.risk.score >= 0"
+      - "$.report.risk.score <= 100"
+  - name: "深度核查需审批"
+    inputs: { case_id: "2024-A-0001", scope: deep }
+    asserts:
+      - "$.execution.nodes.approval_gate.status == 'pending_approval'"
+
+evals:
+  judge: claude-opus-4
+  rubric: rubrics/case_investigation.md
+  baseline: 0.85

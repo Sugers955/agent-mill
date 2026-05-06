@@ -1,0 +1,60 @@
+<svg width="100%" viewBox="0 0 720 480" xmlns="http://www.w3.org/2000/svg">
+<rect width="100%" height="100%" fill="#ffffff"/>
+<defs>
+  <marker id="ar" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+    <path d="M2 1L8 5L2 9" fill="none" stroke="#5f6368" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+  </marker>
+</defs>
+<text x="360" y="28" text-anchor="middle" font-size="15" font-weight="600" fill="#202124">SkillPack 如何被智能体识别与执行</text>
+
+<!-- YAML -->
+<rect x="30" y="60" width="160" height="90" rx="10" fill="#fef7e0" stroke="#feefc3"/>
+<text x="110" y="84" text-anchor="middle" font-size="13" font-weight="600" fill="#f29900">① pack.yaml</text>
+<text x="110" y="104" text-anchor="middle" font-size="10" fill="#5f6368">声明式定义</text>
+<text x="110" y="120" text-anchor="middle" font-size="10" fill="#5f6368">DAG / 输入输出</text>
+<text x="110" y="136" text-anchor="middle" font-size="10" fill="#5f6368">权限 / 审批策略</text>
+
+<line x1="190" y1="105" x2="228" y2="105" stroke="#5f6368" stroke-width="1.4" marker-end="url(#ar)"/>
+
+<!-- Loader -->
+<rect x="230" y="60" width="160" height="90" rx="10" fill="#e8f0fe" stroke="#aecbfa"/>
+<text x="310" y="84" text-anchor="middle" font-size="13" font-weight="600" fill="#1a73e8">② Pack Loader</text>
+<text x="310" y="104" text-anchor="middle" font-size="10" fill="#5f6368">Schema 校验</text>
+<text x="310" y="120" text-anchor="middle" font-size="10" fill="#5f6368">权限/MCP 检查</text>
+<text x="310" y="136" text-anchor="middle" font-size="10" fill="#5f6368">编译为执行计划</text>
+
+<line x1="390" y1="105" x2="428" y2="105" stroke="#5f6368" stroke-width="1.4" marker-end="url(#ar)"/>
+
+<!-- Tool Spec -->
+<rect x="430" y="60" width="260" height="90" rx="10" fill="#e6f4ea" stroke="#a8dab5"/>
+<text x="560" y="84" text-anchor="middle" font-size="13" font-weight="600" fill="#1e8e3e">③ 注册为 LLM Tool</text>
+<text x="560" y="104" text-anchor="middle" font-size="10" fill="#5f6368">name: invoke_pack__case_investigation</text>
+<text x="560" y="120" text-anchor="middle" font-size="10" fill="#5f6368">description: 自动从 pack.name+intent 生成</text>
+<text x="560" y="136" text-anchor="middle" font-size="10" fill="#5f6368">parameters: 来自 pack.inputs JSON Schema</text>
+
+<line x1="560" y1="150" x2="560" y2="180" stroke="#5f6368" stroke-width="1.4" marker-end="url(#ar)"/>
+
+<!-- Agent loop -->
+<rect x="120" y="180" width="480" height="90" rx="10" fill="#e8f0fe" stroke="#aecbfa"/>
+<text x="360" y="204" text-anchor="middle" font-size="13" font-weight="600" fill="#1a73e8">④ Claude Agent SDK · Agent Loop</text>
+<text x="360" y="224" text-anchor="middle" font-size="11" fill="#3c4043">用户:"核查 2024-A-1023" → LLM 看到工具列表 → 决定调用 invoke_pack__case_investigation</text>
+<text x="360" y="244" text-anchor="middle" font-size="11" fill="#3c4043">tool_call(case_id="2024-A-1023", scope="full")</text>
+<text x="360" y="260" text-anchor="middle" font-size="10" fill="#5f6368">LLM 完全不知道里面是 DAG 还是单步,它只看到一个"高级工具"</text>
+
+<line x1="360" y1="270" x2="360" y2="298" stroke="#5f6368" stroke-width="1.4" marker-end="url(#ar)"/>
+
+<!-- Pack Runtime -->
+<rect x="80" y="300" width="560" height="100" rx="10" fill="#fef7e0" stroke="#feefc3"/>
+<text x="360" y="324" text-anchor="middle" font-size="13" font-weight="600" fill="#f29900">⑤ Pack Runtime · 真正的执行引擎</text>
+<text x="360" y="346" text-anchor="middle" font-size="11" fill="#3c4043">解析执行计划 → 调度 DAG 节点 → 每个 Skill 节点又是一次 SDK 子调用 / 函数调用</text>
+<rect x="100" y="360" width="120" height="28" rx="4" fill="#ffffff" stroke="#feefc3"/><text x="160" y="378" text-anchor="middle" font-size="10" fill="#f29900">并发调度</text>
+<rect x="230" y="360" width="120" height="28" rx="4" fill="#ffffff" stroke="#feefc3"/><text x="290" y="378" text-anchor="middle" font-size="10" fill="#f29900">上下文/变量绑定</text>
+<rect x="360" y="360" width="120" height="28" rx="4" fill="#ffffff" stroke="#feefc3"/><text x="420" y="378" text-anchor="middle" font-size="10" fill="#f29900">审批/重试/回滚</text>
+<rect x="490" y="360" width="120" height="28" rx="4" fill="#ffffff" stroke="#feefc3"/><text x="550" y="378" text-anchor="middle" font-size="10" fill="#f29900">事件流/审计</text>
+
+<line x1="360" y1="400" x2="360" y2="424" stroke="#5f6368" stroke-width="1.4" marker-end="url(#ar)"/>
+
+<!-- Result -->
+<rect x="220" y="426" width="280" height="40" rx="20" fill="#e6f4ea" stroke="#a8dab5"/>
+<text x="360" y="451" text-anchor="middle" font-size="12" font-weight="600" fill="#1e8e3e">⑥ 结构化结果 + 报告 → 回传给主 Agent</text>
+</svg>

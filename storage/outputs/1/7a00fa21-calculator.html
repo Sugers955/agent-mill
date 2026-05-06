@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>现代计算器</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
+            background-size: 400% 400%;
+            animation: gradientBG 15s ease infinite;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            padding: 20px;
+        }
+
+        @keyframes gradientBG {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        .calculator {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            padding: 30px;
+            border-radius: 30px;
+            box-shadow: 
+                0 25px 50px rgba(0,0,0,0.3),
+                inset 0 1px 0 rgba(255,255,255,0.6);
+            width: 100%;
+            max-width: 360px;
+        }
+
+        .display {
+            background: linear-gradient(145deg, #1a1a2e 0%, #16213e 100%);
+            color: #fff;
+            padding: 25px 20px;
+            border-radius: 20px;
+            margin-bottom: 25px;
+            text-align: right;
+            box-shadow: inset 0 2px 10px rgba(0,0,0,0.3);
+        }
+
+        .previous-operand {
+            color: rgba(255,255,255,0.5);
+            font-size: 16px;
+            min-height: 24px;
+            word-wrap: break-word;
+            margin-bottom: 8px;
+        }
+
+        .current-operand {
+            font-size: 42px;
+            font-weight: 300;
+            min-height: 52px;
+            word-wrap: break-word;
+            letter-spacing: 1px;
+        }
+
+        .buttons {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 15px;
+        }
+
+        button {
+            padding: 22px 15px;
+            font-size: 22px;
+            border: none;
+            border-radius: 18px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            font-weight: 500;
+            position: relative;
+            overflow: hidden;
+        }
+
+        button::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(145deg, rgba(255,255,255,0.1) 0%, transparent 100%);
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        button:hover::before {
+            opacity: 1;
+        }
+
+        button:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 20px rgba(0,0,0,0.2);
+        }
+
+        button:active {
+            transform: translateY(0) scale(0.98);
+            box-shadow: 0 3px 10px rgba(0,0,0,0.15);
+        }
+
+        .number {
+            background: linear-gradient(145deg, #f5f5f5 0%, #e8e8e8 100%);
+            color: #333;
+        }
+
+        .number:hover {
+            background: linear-gradient(145deg, #e8e8e8 0%, #ddd 100%);
+        }
+
+        .operator {
+            background: linear-gradient(145deg, #667eea 0%, #5a54d8 100%);
+            color: white;
+        }
+
+        .operator:hover {
+            background: linear-gradient(145deg, #5a54d8 0%, #4a44c8 100%);
+        }
+
+        .operator.active {
+            background: linear-gradient(145deg, #f093fb 0%, #f5576c 100%);
+            box-shadow: 0 0 15px rgba(240, 147, 251, 0.5);
+        }
+
+        .equals {
+            background: linear-gradient(145deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+            grid-column: span 2;
+        }
+
+        .equals:hover {
+            background: linear-gradient(145deg, #f5576c 0%, #e0455a 100%);
+        }
+
+        .clear {
+            background: linear-gradient(145deg, #ff6b6b 0%, #ee5a5a 100%);
+            color: white;
+        }
+
+        .clear:hover {
+            background: linear-gradient(145deg, #ee5a5a 0%, #dd4949 100%);
+        }
+
+        .zero {
+            grid-column: span 2;
+        }
+
+        .history-toggle {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(255,255,255,0.2);
+            border: none;
+            color: white;
+            padding: 10px 18px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+
+        .history-toggle:hover {
+            background: rgba(255,255,255,0.3);
+        }
+
+        .history-panel {
+            position: fixed;
+            top: 0;
+            right: -320px;
+            width: 320px;
+            height: 100%;
+            background: rgba(255, 255, 255, 0.98);
+            backdrop-filter: blur(20px);
+            box-shadow: -5px 0 30px rgba(0,0,0,0.2);
+            transition: right 0.4s ease;
+            z-index: 1000;
+            padding: 30px;
+            overflow-y: auto;
+        }
+
+        .history-panel.open {
+            right: 0;
+        }
+
+        .history-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 25px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #eee;
+        }
+
+        .history-title {
+            font-size: 20px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .close-history {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: #666;
+            padding: 0;
+            width: 36px;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+        }
+
+        .close-history:hover {
+            background: #f0f0f0;
+        }
+
+        .clear-history {
+            background: linear-gradient(145deg, #ff6b6b 0%, #ee5a5a 100%);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-bottom: 20px;
+            transition: all 0.3s;
+        }
+
+        .clear-history:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(238, 90, 90, 0.4);
+        }
+
+        .history-item {
+            background: linear-gradient(145deg, #f8f9fa 0%, #e9ecef 100%);
+            padding: 15px;
+            border-radius: 12px;
+            margin-bottom: 12px;
+            cursor: pointer;
+            transition: all 0.3s;
+            border-left: 4px solid #667eea;
+        }
+
+        .history-item:hover {
+            transform: translateX(5px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+
+        .history-expr {
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 5px;
+        }
+
+        .history-result {
+            font-size: 18px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .history-time {
+            font-size: 12px;
+            color: #999;
+            margin-top: 8px;
+        }
+
+        .empty-history {
+            text-align: center;
+            color: #999;
+            padding: 40px;
+        }
+
+        @media (max-width: 400px) {
+            .calculator {
+                padding: 20px;
+            }
+            
+            button {
+                padding: 18px 12px;
+                font-size: 20px;
+            }
+            
+            .current-operand {
+                font-size: 36px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <button class="history-toggle" onclick="toggleHistory()">📋 历史记录</button>
+    
+    <div class="calculator">
+        <div class="display">
+            <div class="previous-operand" id="previous"></div>
+            <div class="current-operand" id="current">0</div>
+        </div>
+        <div class="buttons">
+            <button class="clear" onclick="clearAll()">AC</button>
+            <button class="clear" onclick="deleteLast()">⌫</button>
+            <button class="operator" onclick="appendOperator('%')" data-op="%">%</button>
+            <button class="operator" onclick="appendOperator('÷')" data-op="÷">÷</button>
+            
+            <button class="number" onclick="appendNumber('7')">7</button>
+            <button class="number" onclick="appendNumber('8')">8</button>
+            <button class="number" onclick="appendNumber('9')">9</button>
+            <button class="operator" onclick="appendOperator('×')" data-op="×">×</button>
+            
+            <button class="number" onclick="appendNumber('4')">4</button>
+            <button class="number" onclick="appendNumber('5')">5</button>
+            <button class="number" onclick="appendNumber('6')">6</button>
+            <button class="operator" onclick="appendOperator('-')" data-op="-">−</button>
+            
+            <button class="number" onclick="appendNumber('1')">1</button>
+            <button class="number" onclick="appendNumber('2')">2</button>
+            <button class="number" onclick="appendNumber('3')">3</button>
+            <button class="operator" onclick="appendOperator('+')" data-op="+">+</button>
+            
+            <button class="number zero" onclick="appendNumber('0')">0</button>
+            <button class="number" onclick="appendNumber('.')">.</button>
+            <button class="equals" onclick="calculate()">=</button>
+        </div>
+    </div>
+
+    <div class="history-panel" id="historyPanel">
+        <div class="history-header">
+            <span class="history-title">📋 计算历史</span>
+            <button class="close-history" onclick="toggleHistory()">×</button>
+        </div>
+        <button class="clear-history" onclick="clearHistory()">🗑️ 清空历史</button>
+        <div id="historyList"></div>
+    </div>
+
+    <script>
+        let currentOperand = '0';
+        let previousOperand = '';
+        let operation = undefined;
+        let shouldResetScreen = false;
+        let history = JSON.parse(localStorage.getItem('calcHistory')) || [];
+
+        const currentDisplay = document.getElementById('current');
+        const previousDisplay = document.getElementById('previous');
+        const historyPanel = document.getElementById('historyPanel');
+        const historyList = document.getElementById('historyList');
+
+        // 初始化显示历史
+        updateHistoryDisplay();
+
+        function updateDisplay() {
+            currentDisplay.textContent = formatNumber(currentOperand);
+            if (operation != null) {
+                previousDisplay.textContent = `${formatNumber(previousOperand)} ${operation}`;
+            } else {
+                previousDisplay.textContent = previousOperand ? formatNumber(previousOperand) : '';
+            }
+            
+            // 更新运算符按钮状态
+            document.querySelectorAll('.operator').forEach(btn => {
+                btn.classList.remove('active');
+                if (btn.dataset.op === operation && !shouldResetScreen) {
+                    btn.classList.add('active');
+                }
+            });
+        }
+
+        function formatNumber(num) {
+            if (num === '' || num === '-') return num;
+            const str = num.toString();
+            if (str.includes('e')) return str;
+            
+            const [integer, decimal] = str.split('.');
+            if (integer.length > 12) {
+                return parseFloat(num).toExponential(6);
+            }
+            
+            const formattedInteger = parseInt(integer).toLocaleString('en-US');
+            return decimal !== undefined ? `${formattedInteger}.${decimal}` : formattedInteger;
+        }
+
+        function appendNumber(number) {
+            if (shouldResetScreen) {
+                currentOperand = '';
+                shouldResetScreen = false;
+            }
+            
+            // 处理小数点
+            if (number === '.') {
+                if (currentOperand.includes('.')) return;
+                if (currentOperand === '' || currentOperand === '0') {
+                    currentOperand = '0.';
+                } else {
+                    currentOperand += number;
+                }
+            } else {
+                // 处理数字
+                if (currentOperand === '0') {
+                    currentOperand = number;
+                } else if (currentOperand === '-0') {
+                    currentOperand = '-' + number;
+                } else {
+                    // 限制长度
+                    const cleanNum = currentOperand.replace(/,/g, '');
+                    if (cleanNum.replace('-', '').length >= 15) return;
+                    currentOperand += number;
+                }
+            }
+            updateDisplay();
+        }
+
+        function appendOperator(op) {
+            if (currentOperand === '' || currentOperand === '-') {
+                if (op === '-' && currentOperand === '') {
+                    currentOperand = '-';
+                    updateDisplay();
+                    return;
+                }
+                return;
+            }
+            
+            if (previousOperand !== '' && !shouldResetScreen) {
+                calculate();
+            }
+            
+            operation = op;
+            previousOperand = currentOperand;
+            currentOperand = '';
+            shouldResetScreen = false;
+            updateDisplay();
+        }
+
+        function calculate() {
+            if (operation === undefined || previousOperand === '' || currentOperand === '' || currentOperand === '-') return;
+            
+            let computation;
+            const prev = parseFloat(previousOperand.replace(/,/g, ''));
+            const current = parseFloat(currentOperand.replace(/,/g, ''));
+            
+            if (isNaN(prev) || isNaN(current)) return;
+
+            switch (operation) {
+                case '+':
+                    computation = prev + current;
+                    break;
+                case '-':
+                    computation = prev - current;
+                    break;
+                case '×':
+                    computation = prev * current;
+                    break;
+                case '÷':
+                    if (current === 0) {
+                        showError('不能除以零！');
+                        return;
+                    }
+                    computation = prev / current;
+                    break;
+                case '%':
+                    computation = prev % current;
+                    break;
+                default:
+                    return;
+            }
+
+            // 处理精度问题
+            computation = Math.round(computation * 1e12) / 1e12;
+            
+            // 添加到历史记录
+            const expr = `${formatNumber(previousOperand)} ${operation} ${formatNumber(currentOperand)}`;
+            addToHistory(expr, computation);
+
+            currentOperand = computation.toString();
+            operation = undefined;
+            previousOperand = '';
+            shouldResetScreen = true;
+            updateDisplay();
+        }
+
+        function clearAll() {
+            currentOperand = '0';
+            previousOperand = '';
+            operation = undefined;
+            shouldResetScreen = false;
+            updateDisplay();
+        }
+
+        function deleteLast() {
+            if (shouldResetScreen) {
+                clearAll();
+                return;
+            }
+            if (currentOperand.length === 1 || (currentOperand.length === 2 && currentOperand[0] === '-')) {
+                currentOperand = '0';
+            } else {
+                currentOperand = currentOperand.slice(0, -1);
+            }
+            updateDisplay();
+        }
+
+        function showError(msg) {
+            currentDisplay.textContent = msg;
+            currentDisplay.style.color = '#ff6b6b';
+            setTimeout(() => {
+                currentDisplay.style.color = '#fff';
+                clearAll();
+            }, 1500);
+        }
+
+        function addToHistory(expression, result) {
+            const record = {
+                expression,
+                result: formatNumber(result.toString()),
+                time: new Date().toLocaleString('zh-CN', { 
+                    month: 'short', 
+                    day: 'numeric', 
+                    hour: '2-digit', 
+                    minute: '2-digit' 
+                })
+            };
+            
+            history.unshift(record);
+            if (history.length > 50) history = history.slice(0, 50);
+            
+            localStorage.setItem('calcHistory', JSON.stringify(history));
+            updateHistoryDisplay();
+        }
+
+        function updateHistoryDisplay() {
+            if (history.length === 0) {
+                historyList.innerHTML = '<div class="empty-history">暂无计算记录</div>';
+                return;
+            }
+            
+            historyList.innerHTML = history.map((item, index) => `
+                <div class="history-item" onclick="loadHistory(${index})">
+                    <div class="history-expr">${item.expression} =</div>
+                    <div class="history-result">${item.result}</div>
+                    <div class="history-time">${item.time}</div>
+                </div>
+            `).join('');
+        }
+
+        function loadHistory(index) {
+            const item = history[index];
+            currentOperand = item.result.replace(/,/g, '');
+            shouldResetScreen = true;
+            updateDisplay();
+            toggleHistory();
+        }
+
+        function clearHistory() {
+            history = [];
+            localStorage.removeItem('calcHistory');
+            updateHistoryDisplay();
+        }
+
+        function toggleHistory() {
+            historyPanel.classList.toggle('open');
+        }
+
+        // 键盘支持
+        document.addEventListener('keydown', (e) => {
+            // 防止输入到其他地方
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+            
+            const key = e.key;
+            
+            // 数字
+            if (key >= '0' && key <= '9') {
+                appendNumber(key);
+                animateButton(key);
+            }
+            
+            // 小数点
+            if (key === '.') {
+                appendNumber('.');
+                animateButton('.');
+            }
+            
+            // 运算符
+            if (key === '+') { appendOperator('+'); animateOpButton('+'); }
+            if (key === '-') { appendOperator('-'); animateOpButton('-'); }
+            if (key === '*') { appendOperator('×'); animateOpButton('×'); }
+            if (key === '/') { 
+                e.preventDefault();
+                appendOperator('÷'); 
+                animateOpButton('÷'); 
+            }
+            if (key === '%') { appendOperator('%'); animateOpButton('%'); }
+            
+            // 等号
+            if (key === 'Enter' || key === '=') {
+                e.preventDefault();
+                calculate();
+                animateButton('=');
+            }
+            
+            // 清除
+            if (key === 'Escape') {
+                clearAll();
+                animateButton('AC');
+            }
+            
+            // 退格
+            if (key === 'Backspace') {
+                e.preventDefault();
+                deleteLast();
+                animateButton('⌫');
+            }
+        });
+
+        function animateButton(text) {
+            const buttons = Array.from(document.querySelectorAll('button'));
+            const btn = buttons.find(b => b.textContent === text || 
+                (text === 'Enter' && b.textContent === '='));
+            if (btn) {
+                btn.style.transform = 'scale(0.95)';
+                setTimeout(() => btn.style.transform = '', 100);
+            }
+        }
+
+        function animateOpButton(op) {
+            const btn = document.querySelector(`[data-op="${op}"]`);
+            if (btn) {
+                btn.style.transform = 'scale(0.95)';
+                setTimeout(() => btn.style.transform = '', 100);
+            }
+        }
+
+        // 点击外部关闭历史面板
+        document.addEventListener('click', (e) => {
+            if (historyPanel.classList.contains('open') && 
+                !historyPanel.contains(e.target) && 
+                !e.target.classList.contains('history-toggle')) {
+                toggleHistory();
+            }
+        });
+    </script>
+</body>
+</html>
