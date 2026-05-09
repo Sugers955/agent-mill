@@ -58,9 +58,27 @@
             <el-option v-for="m in models" :key="m.id" :label="m.code" :value="m.id" />
           </el-select>
         </el-form-item>
+        <el-form-item label="最大轮次">
+          <el-input-number v-model="form.max_turns" :min="1" :max="100" :step="1" controls-position="right" />
+          <span style="margin-left:8px;font-size:12px;color:var(--m-text-secondary)">轮 · 一次对话内允许的工具调用循环上限,默认 5</span>
+        </el-form-item>
+        <el-form-item label="努力程度">
+          <el-select v-model="form.effort" style="width:220px">
+            <el-option label="low — 轻量推理,响应快" value="low" />
+            <el-option label="medium — 平衡推理（默认）" value="medium" />
+            <el-option label="high — 深入分析,适合重构/调试" value="high" />
+            <el-option label="xhigh — 扩展推理深度（推荐 Opus 4.7）" value="xhigh" />
+            <el-option label="max — 最大推理深度,多步骤问题" value="max" />
+          </el-select>
+        </el-form-item>
         <el-form-item label="挂载 Skills">
           <el-select v-model="form.skill_ids" multiple style="width:100%">
             <el-option v-for="s in skills" :key="s.id" :label="`${s.code} (${s.type})`" :value="s.id" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="挂载 Packs">
+          <el-select v-model="form.pack_ids" multiple style="width:100%">
+            <el-option v-for="p in packs" :key="p.id" :label="`${p.code} @ ${p.version}`" :value="p.id" />
           </el-select>
         </el-form-item>
         <el-form-item label="挂载 MCP">
@@ -107,6 +125,7 @@ const rows = ref<any[]>([])
 const models = ref<any[]>([])
 const skills = ref<any[]>([])
 const mcps = ref<any[]>([])
+const packs = ref<any[]>([])
 const roles = ref<any[]>([])
 const visible = ref(false)
 const editing = ref<any | null>(null)
@@ -119,14 +138,15 @@ function emptyForm() {
   return {
     code: '', name: '', description: '', icon: '', system_prompt: '',
     default_model_id: null, fallback_model_id: null,
-    upload_policy_json: {}, enabled: true, is_default: false,
-    skill_ids: [], mcp_ids: [], role_ids: [],
+    upload_policy_json: {}, max_turns: 5, effort: 'medium',
+    enabled: true, is_default: false,
+    skill_ids: [], mcp_ids: [], pack_ids: [], role_ids: [],
   }
 }
 
 async function load() {
-  ;[rows.value, models.value, skills.value, mcps.value, roles.value] = await Promise.all([
-    api.agents(), api.models(), api.skills(), api.mcps(), api.roles(),
+  ;[rows.value, models.value, skills.value, mcps.value, packs.value, roles.value] = await Promise.all([
+    api.agents(), api.models(), api.skills(), api.mcps(), api.packs(), api.roles(),
   ])
 }
 onMounted(load)
@@ -146,7 +166,9 @@ function openCreate() {
 }
 function openEdit(row: any) {
   editing.value = row
-  Object.assign(form, JSON.parse(JSON.stringify(row)))
+  Object.assign(form, emptyForm(), JSON.parse(JSON.stringify(row)))
+  if (form.max_turns == null) form.max_turns = 5
+  if (!form.effort) form.effort = 'medium'
   const policy = row.upload_policy_json || {}
   extText.value = (policy.allowed_ext || []).join(',')
   maxSizeMb.value = Number(policy.max_size_mb || 0)

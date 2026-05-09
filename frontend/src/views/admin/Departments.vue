@@ -375,7 +375,6 @@ async function onDelete(row: any) {
   display: flex; align-items: center; justify-content: space-between;
   margin-bottom: 16px;
 }
-.page-title { font-size: 18px; font-weight: 600; }
 
 /* ---------- Two-pane layout ---------- */
 .dep-layout {

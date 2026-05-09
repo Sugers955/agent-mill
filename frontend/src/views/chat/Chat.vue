@@ -46,21 +46,29 @@
 
               <!-- tool / mcp / skill steps -->
               <div v-if="m._steps?.length || m.tool_calls_json?.trace?.length" class="step-list">
-                <div v-for="(s, i) in (m._steps || normalizeTrace(m.tool_calls_json?.trace))" :key="i" :class="['step-card', s.status]">
-                  <div class="step-head">
-                    <el-icon v-if="s.status === 'running'" class="is-loading"><Loading /></el-icon>
-                    <el-icon v-else-if="s.status === 'done'" style="color:var(--m-success)"><CircleCheckFilled /></el-icon>
-                    <el-icon v-else><Tools /></el-icon>
-                    <span class="step-kind">{{ s.kind }}</span>
-                    <code class="step-name">{{ s.name }}</code>
-                    <span v-if="s.duration_ms" class="muted" style="font-size:11px">{{ s.duration_ms }}ms</span>
+                <template v-for="(s, i) in (m._steps || normalizeTrace(m.tool_calls_json?.trace))" :key="i">
+                  <PackProgressCard
+                    v-if="s.name?.startsWith('run_pack__')"
+                    :pack-code="s.name.replace('run_pack__', '')"
+                    :input="s.input"
+                    :output="s.output"
+                  />
+                  <div v-else :class="['step-card', s.status]">
+                    <div class="step-head">
+                      <el-icon v-if="s.status === 'running'" class="is-loading"><Loading /></el-icon>
+                      <el-icon v-else-if="s.status === 'done'" style="color:var(--m-success)"><CircleCheckFilled /></el-icon>
+                      <el-icon v-else><Tools /></el-icon>
+                      <span class="step-kind">{{ s.kind }}</span>
+                      <code class="step-name">{{ s.name }}</code>
+                      <span v-if="s.duration_ms" class="muted" style="font-size:11px">{{ s.duration_ms }}ms</span>
+                    </div>
+                    <details v-if="s.input || s.output" class="step-detail">
+                      <summary class="muted">查看 输入/输出</summary>
+                      <div v-if="s.input" class="step-block"><div class="step-label">Input</div><pre>{{ formatStepData(s.input) }}</pre></div>
+                      <div v-if="s.output" class="step-block"><div class="step-label">Output</div><pre>{{ formatStepData(s.output) }}</pre></div>
+                    </details>
                   </div>
-                  <details v-if="s.input || s.output" class="step-detail">
-                    <summary class="muted">查看 输入/输出</summary>
-                    <div v-if="s.input" class="step-block"><div class="step-label">Input</div><pre>{{ formatStepData(s.input) }}</pre></div>
-                    <div v-if="s.output" class="step-block"><div class="step-label">Output</div><pre>{{ formatStepData(s.output) }}</pre></div>
-                  </details>
-                </div>
+                </template>
               </div>
 
               <!-- file cards (saved outputs) -->
@@ -175,6 +183,7 @@ import { useChat } from '@/stores/chat'
 import MarkdownIt from 'markdown-it'
 import WidgetRenderer from '@/components/WidgetRenderer.vue'
 import FileCard from '@/components/FileCard.vue'
+import PackProgressCard from '@/components/PackProgressCard.vue'
 import PreviewPanel from '@/components/PreviewPanel.vue'
 import MessageDispatcher from '@/agent-ui/engine/MessageDispatcher.vue'
 import { parseMessageContent } from '@/lib/widget-parser'

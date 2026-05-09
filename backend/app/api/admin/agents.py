@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete, update
 from ...db.session import get_db
-from ...db.models import Agent, AgentSkill, AgentMCP, RoleAgentGrant
+from ...db.models import Agent, AgentSkill, AgentMCP, AgentPack, RoleAgentGrant, SolutionPack
 from ...deps import require_admin_or_operator
 from ...services.audit import audit
 from ...db.models import User
@@ -15,10 +15,12 @@ router = APIRouter(prefix="/api/admin/agents", tags=["admin-agents"])
 async def _to_out(db: AsyncSession, a: Agent) -> AgentOut:
     skill_ids = [r[0] for r in (await db.execute(select(AgentSkill.skill_id).where(AgentSkill.agent_id == a.id))).all()]
     mcp_ids = [r[0] for r in (await db.execute(select(AgentMCP.mcp_id).where(AgentMCP.agent_id == a.id))).all()]
+    pack_ids = [r[0] for r in (await db.execute(select(AgentPack.pack_id).where(AgentPack.agent_id == a.id))).all()]
     role_ids = [r[0] for r in (await db.execute(select(RoleAgentGrant.role_id).where(RoleAgentGrant.agent_id == a.id))).all()]
     out = AgentOut.model_validate(a, from_attributes=True)
     out.skill_ids = skill_ids
     out.mcp_ids = mcp_ids
+    out.pack_ids = pack_ids
     out.role_ids = role_ids
     return out
 
@@ -40,9 +42,11 @@ async def get_agent(aid: int, db: AsyncSession = Depends(get_db), _=Depends(requ
 async def _set_relations(db: AsyncSession, agent_id: int, payload: AgentIn) -> None:
     await db.execute(delete(AgentSkill).where(AgentSkill.agent_id == agent_id))
     await db.execute(delete(AgentMCP).where(AgentMCP.agent_id == agent_id))
+    await db.execute(delete(AgentPack).where(AgentPack.agent_id == agent_id))
     await db.execute(delete(RoleAgentGrant).where(RoleAgentGrant.agent_id == agent_id))
     db.add_all([AgentSkill(agent_id=agent_id, skill_id=sid) for sid in payload.skill_ids])
     db.add_all([AgentMCP(agent_id=agent_id, mcp_id=mid) for mid in payload.mcp_ids])
+    db.add_all([AgentPack(agent_id=agent_id, pack_id=pid) for pid in payload.pack_ids])
     db.add_all([RoleAgentGrant(role_id=rid, agent_id=agent_id) for rid in payload.role_ids])
 
 
@@ -52,7 +56,7 @@ async def create_agent(payload: AgentIn, db: AsyncSession = Depends(get_db), act
         raise HTTPException(400, "code 已存在")
     if payload.is_default:
         await db.execute(update(Agent).values(is_default=False))
-    data = payload.model_dump(exclude={"skill_ids", "mcp_ids", "role_ids"})
+    data = payload.model_dump(exclude={"skill_ids", "mcp_ids", "pack_ids", "role_ids"})
     a = Agent(**data)
     db.add(a)
     await db.flush()
@@ -69,7 +73,7 @@ async def update_agent(aid: int, payload: AgentIn, db: AsyncSession = Depends(ge
         raise HTTPException(404, "不存在")
     if payload.is_default:
         await db.execute(update(Agent).where(Agent.id != aid).values(is_default=False))
-    for k, v in payload.model_dump(exclude={"skill_ids", "mcp_ids", "role_ids"}).items():
+    for k, v in payload.model_dump(exclude={"skill_ids", "mcp_ids", "pack_ids", "role_ids"}).items():
         setattr(a, k, v)
     await _set_relations(db, a.id, payload)
     await audit(db, actor.id, "agent.update", target_type="agent", target_id=a.id)

@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc
 from ..db.session import get_db, SessionLocal
 from ..db.models import (
-    Agent, AgentSkill, AgentMCP, RoleAgentGrant, Skill, MCPConnector, Model,
+    Agent, AgentSkill, AgentMCP, AgentPack, RoleAgentGrant, Skill, MCPConnector, Model, SolutionPack,
     Conversation, Message, User, UploadedFile, CallLog,
 )
 from ..deps import current_user
@@ -105,6 +105,11 @@ async def agent_capabilities(
         select(MCPConnector).where(MCPConnector.id.in_(mcp_ids))
     )).scalars().all()) if mcp_ids else []
 
+    pack_ids = [r[0] for r in (await db.execute(select(AgentPack.pack_id).where(AgentPack.agent_id == a.id))).all()]
+    packs = list((await db.execute(
+        select(SolutionPack).where(SolutionPack.id.in_(pack_ids))
+    )).scalars().all()) if pack_ids else []
+
     return {
         "model": _model_brief(model),
         "fallback_model": _model_brief(fb),
@@ -116,6 +121,11 @@ async def agent_capabilities(
         "mcps": [
             {"id": m.id, "name": m.name, "transport": m.transport, "enabled": m.enabled}
             for m in mcps
+        ],
+        "packs": [
+            {"id": p.id, "code": p.code, "name": p.name, "version": p.version,
+             "description": p.description, "enabled": p.enabled}
+            for p in packs
         ],
     }
 
@@ -268,6 +278,8 @@ async def _load_agent_context(db: AsyncSession, agent_id: int, conversation_id: 
     mcp_ids = [r[0] for r in (await db.execute(select(AgentMCP.mcp_id).where(AgentMCP.agent_id == a.id))).all()]
     skills = list((await db.execute(select(Skill).where(Skill.id.in_(skill_ids), Skill.enabled.is_(True)))).scalars().all())
     mcps = list((await db.execute(select(MCPConnector).where(MCPConnector.id.in_(mcp_ids), MCPConnector.enabled.is_(True)))).scalars().all())
+    pack_ids = [r[0] for r in (await db.execute(select(AgentPack.pack_id).where(AgentPack.agent_id == a.id))).all()]
+    packs = list((await db.execute(select(SolutionPack).where(SolutionPack.id.in_(pack_ids), SolutionPack.enabled.is_(True)))).scalars().all()) if pack_ids else []
     model = (await db.execute(select(Model).where(Model.id == a.default_model_id))).scalar_one_or_none() if a.default_model_id else None
     fb = (await db.execute(select(Model).where(Model.id == a.fallback_model_id))).scalar_one_or_none() if a.fallback_model_id else None
 
@@ -285,7 +297,7 @@ async def _load_agent_context(db: AsyncSession, agent_id: int, conversation_id: 
         )).scalars().all()
         history = list(reversed(rows))
 
-    return AgentContext(agent=a, skills=skills, mcps=mcps, model=model, fallback_model=fb, history=history)
+    return AgentContext(agent=a, skills=skills, mcps=mcps, packs=packs, model=model, fallback_model=fb, history=history)
 
 
 @router.post("/conversations/{cid}/messages")

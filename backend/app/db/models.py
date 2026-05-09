@@ -92,6 +92,8 @@ class Agent(Base, TimestampMixin):
     default_model_id: Mapped[int | None] = mapped_column(ForeignKey("models.id"))
     fallback_model_id: Mapped[int | None] = mapped_column(ForeignKey("models.id"))
     upload_policy_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    max_turns: Mapped[int] = mapped_column(Integer, default=5, server_default="5")
+    effort: Mapped[str] = mapped_column(String(16), default="medium", server_default="medium")
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     is_default: Mapped[bool] = mapped_column(Boolean, default=False)
 
@@ -197,3 +199,69 @@ class DownloadToken(Base):
     download_count: Mapped[int] = mapped_column(Integer, default=0)
     max_downloads: Mapped[int] = mapped_column(Integer, default=0)  # 0 = unlimited within expiry
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+# ====================== Solution Packs ======================
+
+class SolutionPack(Base, TimestampMixin):
+    """Declarative business workflow packaged as a YAML DAG of nodes.
+
+    Each Pack is registered against an agent in `agent_packs` and shows up to
+    the LLM as a single tool `run_pack__<code>(inputs)`. Calling that tool
+    spins up a `PackRun` and streams progress via SSE pack_progress/pack_done.
+    """
+    __tablename__ = "solution_packs"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    code: Mapped[str] = mapped_column(String(64), unique=True, index=True)  # snake_case, == pack_id
+    name: Mapped[str] = mapped_column(String(128))
+    description: Mapped[str | None] = mapped_column(Text)
+    version: Mapped[str] = mapped_column(String(32), default="1.0.0")
+    yaml_text: Mapped[str] = mapped_column(Text)  # source-of-truth YAML
+    spec_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)  # parsed cache
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class AgentPack(Base):
+    __tablename__ = "agent_packs"
+    agent_id: Mapped[int] = mapped_column(ForeignKey("agents.id", ondelete="CASCADE"), primary_key=True)
+    pack_id: Mapped[int] = mapped_column(ForeignKey("solution_packs.id", ondelete="CASCADE"), primary_key=True)
+
+
+class PackRun(Base):
+    """Execution snapshot of a Pack. Persisted so human_approval can pause+resume."""
+    __tablename__ = "pack_runs"
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    run_id: Mapped[str] = mapped_column(String(64), unique=True, index=True)  # uuid hex
+    pack_id: Mapped[int] = mapped_column(ForeignKey("solution_packs.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    agent_id: Mapped[int | None] = mapped_column(ForeignKey("agents.id", ondelete="SET NULL"))
+    conversation_id: Mapped[int | None] = mapped_column(ForeignKey("conversations.id", ondelete="SET NULL"), index=True)
+    status: Mapped[str] = mapped_column(String(24), default="running", index=True)
+    # ^ running / success / failed / aborted / waiting_approval
+    inputs: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    context_snapshot: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    outputs: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    trace: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON)
+    error: Mapped[str | None] = mapped_column(Text)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class PackApproval(Base):
+    """One row per human_approval node hit. Inbox + decision audit."""
+    __tablename__ = "pack_approvals"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    run_id: Mapped[str] = mapped_column(String(64), index=True)
+    pack_id: Mapped[int] = mapped_column(ForeignKey("solution_packs.id", ondelete="CASCADE"))
+    node_id: Mapped[str] = mapped_column(String(64))
+    status: Mapped[str] = mapped_column(String(16), default="pending", index=True)  # pending/approved/rejected/timeout
+    title: Mapped[str] = mapped_column(String(256))
+    message: Mapped[str | None] = mapped_column(Text)
+    detail_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)  # context highlights for the approver
+    assigned_role: Mapped[str | None] = mapped_column(String(32))
+    assigned_user_ids: Mapped[list[int] | None] = mapped_column(JSON)
+    decided_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    decision_reason: Mapped[str | None] = mapped_column(Text)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

@@ -26,8 +26,16 @@ _SHELL_PATTERNS: list[tuple[str, re.Pattern]] = [
 
 # Python AST denylist
 _BAD_PY_FUNCS = {"eval", "exec", "compile", "__import__"}
-_BAD_PY_MODULES = {"subprocess", "os", "socket", "ctypes", "marshal", "pickle"}
-_BAD_PY_ATTRS = {("os", "system"), ("os", "popen"), ("os", "execv"), ("os", "execvp")}
+# `os` was previously in this set, but `import os` is too common in legitimate
+# skills (path joins, env reads, etc.) — we now police only the actually
+# dangerous os APIs via _BAD_PY_ATTRS below.
+_BAD_PY_MODULES = {"subprocess", "socket", "ctypes", "marshal", "pickle"}
+_BAD_PY_ATTRS = {
+    ("os", "system"), ("os", "popen"),
+    ("os", "execv"), ("os", "execvp"), ("os", "execve"), ("os", "execvpe"),
+    ("os", "spawnv"), ("os", "spawnvp"), ("os", "spawnve"), ("os", "spawnvpe"),
+    ("os", "fork"), ("os", "forkpty"),
+}
 
 
 def _scan_text(content: str) -> list[dict]:

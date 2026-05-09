@@ -16,6 +16,8 @@ const routes = [
       { path: 'admin/mcp', meta: { manage: true }, component: () => import('@/views/admin/MCP.vue') },
       { path: 'admin/skills', meta: { manage: true }, component: () => import('@/views/admin/Skills.vue') },
       { path: 'admin/agents', meta: { manage: true }, component: () => import('@/views/admin/Agents.vue') },
+      { path: 'admin/packs', meta: { manage: true }, component: () => import('@/views/admin/Packs.vue') },
+      { path: 'admin/approvals', meta: { manage: true }, component: () => import('@/views/admin/Approvals.vue') },
       { path: 'admin/logs', meta: { manage: true }, component: () => import('@/views/admin/Logs.vue') },
     ],
   },

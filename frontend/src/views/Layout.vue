@@ -38,6 +38,9 @@
           <router-link to="/admin/agents" class="rail-item" active-class="active">
             <el-icon :size="20"><Promotion /></el-icon><span>智能体</span>
           </router-link>
+          <router-link to="/admin/packs" class="rail-item" active-class="active">
+            <el-icon :size="20"><CollectionTag /></el-icon><span>Solution Pack</span>
+          </router-link>
           <router-link to="/admin/skills" class="rail-item" active-class="active">
             <el-icon :size="20"><MagicStick /></el-icon><span>Skills</span>
           </router-link>

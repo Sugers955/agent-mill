@@ -114,6 +114,5 @@ async function onDelete(row: any) {
 
 <style scoped>
 .page-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
-.page-title { font-size: 18px; font-weight: 600; }
 .mono { font-family: 'Roboto Mono', monospace; font-size: 12px; }
 </style>

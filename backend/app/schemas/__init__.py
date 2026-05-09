@@ -178,6 +178,9 @@ class SkillOut(ORM):
 
 
 # ---------- Agent ----------
+EffortLevel = Literal["low", "medium", "high", "xhigh", "max"]
+
+
 class AgentIn(BaseModel):
     code: str
     name: str
@@ -187,10 +190,13 @@ class AgentIn(BaseModel):
     default_model_id: int | None = None
     fallback_model_id: int | None = None
     upload_policy_json: dict[str, Any] = Field(default_factory=dict)
+    max_turns: int = Field(default=5, ge=1, le=100)
+    effort: EffortLevel = "medium"
     enabled: bool = True
     is_default: bool = False
     skill_ids: list[int] = Field(default_factory=list)
     mcp_ids: list[int] = Field(default_factory=list)
+    pack_ids: list[int] = Field(default_factory=list)
     role_ids: list[int] = Field(default_factory=list)
 
 
@@ -204,10 +210,13 @@ class AgentOut(ORM):
     default_model_id: int | None
     fallback_model_id: int | None
     upload_policy_json: dict[str, Any]
+    max_turns: int = 5
+    effort: EffortLevel = "medium"
     enabled: bool
     is_default: bool = False
     skill_ids: list[int] = []
     mcp_ids: list[int] = []
+    pack_ids: list[int] = []
     role_ids: list[int] = []
 
 
@@ -280,3 +289,49 @@ class CallLogPage(BaseModel):
 class AuditLogPage(BaseModel):
     items: list[AuditLogOut]
     total: int
+
+
+# ---------- Solution Pack ----------
+class SolutionPackIn(BaseModel):
+    code: str = Field(min_length=1, max_length=64)
+    name: str = Field(min_length=1, max_length=128)
+    version: str = Field(min_length=1, max_length=32, default="1.0.0")
+    description: str | None = None
+    yaml_text: str = Field(min_length=1)
+    enabled: bool = True
+
+
+class SolutionPackOut(ORM):
+    id: int
+    code: str
+    name: str
+    version: str
+    description: str | None = None
+    yaml_text: str
+    spec_json: dict[str, Any] = Field(default_factory=dict)
+    enabled: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class PackApprovalOut(ORM):
+    id: int
+    run_id: str
+    pack_id: int
+    node_id: str
+    status: str
+    title: str
+    message: str | None = None
+    detail_json: dict[str, Any] | None = None
+    assigned_role: str | None = None
+    assigned_user_ids: list[int] | None = None
+    decided_by: int | None = None
+    decision_reason: str | None = None
+    expires_at: datetime | None = None
+    created_at: datetime
+    decided_at: datetime | None = None
+
+
+class PackApprovalDecision(BaseModel):
+    decision: Literal["approved", "rejected"]
+    reason: str | None = None

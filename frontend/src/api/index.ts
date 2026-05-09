@@ -72,12 +72,13 @@ export const api = {
   createSkill: (p: any) => http.post('/api/admin/skills', p).then((r) => r.data),
   updateSkill: (id: number, p: any) => http.patch(`/api/admin/skills/${id}`, p).then((r) => r.data),
   deleteSkill: (id: number) => http.delete(`/api/admin/skills/${id}`).then((r) => r.data),
-  uploadSkill: (file: File, code: string, name: string, description: string) => {
+  uploadSkill: (file: File, code: string, name: string, description: string, force = false) => {
     const fd = new FormData()
     fd.append('file', file)
     fd.append('code', code)
     fd.append('name', name)
     fd.append('description', description || '')
+    if (force) fd.append('force', 'true')
     return http.post('/api/admin/skills/upload', fd).then((r) => r.data)
   },
   skillFiles: (id: number) => http.get(`/api/admin/skills/${id}/files`).then((r) => r.data),
@@ -86,6 +87,14 @@ export const api = {
   saveSkillFile: (id: number, path: string, content: string) =>
     http.put(`/api/admin/skills/${id}/file`, { path, content }).then((r) => r.data),
 
+  packs: () => http.get('/api/admin/packs').then((r) => r.data),
+  createPack: (p: any) => http.post('/api/admin/packs', p).then((r) => r.data),
+  updatePack: (id: number, p: any) => http.patch(`/api/admin/packs/${id}`, p).then((r) => r.data),
+  deletePack: (id: number) => http.delete(`/api/admin/packs/${id}`).then((r) => r.data),
+  approvals: (params: { status?: string; limit?: number; offset?: number } = {}) =>
+    http.get('/api/admin/approvals', { params: { limit: 50, offset: 0, ...params } }).then((r) => r.data),
+  decideApproval: (id: number, payload: { decision: 'approved' | 'rejected'; reason?: string | null }) =>
+    http.post(`/api/admin/approvals/${id}/decision`, payload).then((r) => r.data),
   agents: () => http.get('/api/admin/agents').then((r) => r.data),
   agent: (id: number) => http.get(`/api/admin/agents/${id}`).then((r) => r.data),
   createAgent: (p: any) => http.post('/api/admin/agents', p).then((r) => r.data),

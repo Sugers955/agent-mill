@@ -244,7 +244,6 @@ async function onDelete(row: any) {
 
 <style scoped>
 .page-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
-.page-title { font-size: 18px; font-weight: 600; }
 .filters { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
 .filter-input { width: 220px; }
 .filter-select { width: 200px; }

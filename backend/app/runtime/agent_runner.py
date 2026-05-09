@@ -86,6 +86,35 @@ def _wants_widget(text: str) -> bool:
     return any(k.lower() in low for k in _VIZ_KEYWORDS_GENERAL + _VIZ_KEYWORDS_HTML)
 
 
+# Effort level → per-provider tuning.
+# Canonical levels: low / medium / high / xhigh / max.
+# For Anthropic (Claude Agent SDK): mapped to extended-thinking token budget.
+# For OpenAI-compatible providers: mapped to `reasoning_effort`.
+_EFFORT_THINKING_BUDGET: dict[str, int] = {
+    "low": 2000,
+    "medium": 8000,
+    "high": 16000,
+    "xhigh": 32000,
+    "max": 64000,
+}
+
+_EFFORT_OPENAI_REASONING: dict[str, str] = {
+    "low": "low",
+    "medium": "medium",
+    "high": "high",
+    "xhigh": "high",
+    "max": "high",
+}
+
+
+def _effort_to_thinking_budget(effort: str) -> int | None:
+    return _EFFORT_THINKING_BUDGET.get((effort or "medium").lower())
+
+
+def _effort_to_openai_reasoning(effort: str) -> str | None:
+    return _EFFORT_OPENAI_REASONING.get((effort or "medium").lower())
+
+
 # Keywords in a Skill's name / code / description that indicate it already
 # handles SVG/HTML diagram generation and would conflict with the widget
 # pipeline. When matched, we DON'T inject the widget guidance — the model
@@ -160,6 +189,7 @@ class AgentContext:
     agent: Agent
     skills: list[Skill]
     mcps: list[MCPConnector]
+    packs: list[Any]  # SolutionPack rows
     model: Model | None
     fallback_model: Model | None
     history: list[Message]
@@ -179,8 +209,10 @@ class AgentRunner:
         self._tokens_in = 0
         self._tokens_out = 0
         self._user_id = user_id
+        self._conversation_id: int | None = None
         # Files saved during this run (to surface as file events to the UI)
         self._saved_files: list[dict[str, Any]] = []
+        self._emitted_file_urls: set[str] = set()
         # UI Schemas emitted during this run (for chat.py to persist into history)
         self._saved_ui: list[dict[str, Any]] = []
         # Buffer of assistant text used by the stream-tail fallback extractor
@@ -359,9 +391,52 @@ class AgentRunner:
                     },
                 },
             })
+        # Solution Packs: exposed as special async tools `run_pack__<pack_code>`.
+        # LLM sees them alongside Skills/MCP and decides when a whole workflow is
+        # more appropriate than a single Skill. Execution is synchronous for MVP:
+        # tool_result returns only after the Pack finishes (or pauses on approval).
+        for p in (self.ctx.packs or []):
+            spec = p.spec_json or {}
+            in_props = {}
+            required = []
+            for k, cfg in (spec.get("inputs") or {}).items():
+                typ = (cfg or {}).get("type") or "string"
+                json_type = {
+                    "string": "string", "number": "number", "boolean": "boolean",
+                    "list": "array", "object": "object", "daterange": "string",
+                }.get(typ, "string")
+                desc = (cfg or {}).get("description") or k
+                in_props[k] = {"type": json_type, "description": desc}
+                if (cfg or {}).get("required"):
+                    required.append(k)
+            tools.append({
+                "type": "function",
+                "function": {
+                    "name": f"run_pack__{p.code}",
+                    "description": (
+                        f"执行方案包『{p.name}』。{p.description or ''} "
+                        "适用于需要完整业务流程编排的场景,比单个 Skill 更适合。"
+                    ).strip(),
+                    "parameters": {
+                        "type": "object",
+                        "properties": in_props,
+                        "required": required,
+                    },
+                },
+            })
         # Generative-UI widget guidelines loader (always available)
         tools.append(WIDGET_TOOL_DEFINITION)
         return tools
+
+    async def _pack_runner_factory(self, user_id: int | None = None, agent_id: int | None = None,
+                                   conversation_id: int | None = None, override_agent_code: str | None = None):
+        """Factory used by PackEngine to reuse existing skill/MCP execution helpers.
+
+        MVP: just returns self, but a future version may construct a dedicated
+        sub-runner or sub-agent based on override_agent_code.
+        """
+        self._conversation_id = conversation_id
+        return self
 
     async def _exec_skill(self, skill_code: str, args: dict[str, Any]) -> dict[str, Any]:
         # built-in helper for reading skill bundle files
@@ -386,12 +461,41 @@ class AgentRunner:
                 output_filename=str(args.get("output_filename") or "output.bin"),
             )
 
+        # Solution Pack runner (special tool injected as run_pack__<pack_code>)
+        if skill_code.startswith("run_pack__"):
+            from .pack_engine import PackEngine
+            pack_code = skill_code.replace("run_pack__", "", 1)
+            engine = PackEngine(runner_factory=self._pack_runner_factory)
+            final = None
+            async for ev in engine.start(pack_code, inputs=args or {},
+                                         user_id=self._user_id,
+                                         agent_id=getattr(self.ctx.agent, 'id', None),
+                                         conversation_id=getattr(self, '_conversation_id', None)):
+                final = ev.data
+                if ev.type == 'pack_waiting_approval':
+                    return {
+                        'status': 'waiting_approval',
+                        'run_id': ev.data.get('run_id'),
+                        'pack_id': ev.data.get('pack_id'),
+                        'message': ev.data.get('message') or '方案包等待审批',
+                    }
+                if ev.type == 'pack_error':
+                    return {
+                        'status': 'failed',
+                        'run_id': ev.data.get('run_id'),
+                        'pack_id': ev.data.get('pack_id'),
+                        'error': ev.data.get('error'),
+                    }
+            return {
+                'status': 'success',
+                'run_id': (final or {}).get('run_id'),
+                'pack_id': (final or {}).get('pack_id'),
+                'outputs': (final or {}).get('outputs') or {},
+                'trace': (final or {}).get('trace') or [],
+            }
+
         # generative-UI widget guidelines loader
         if skill_code == "load_widget_guidelines":
-            # Lock this turn into the widget pipeline — any later attempt to
-            # save widget-shaped content via save_output_file is rejected so
-            # the user doesn't see a stray output-1.txt next to the rendered
-            # widget.
             self._widget_pipeline_active = True
             return {"guidelines": handle_widget_tool_call(args)}
 
@@ -408,9 +512,6 @@ class AgentRunner:
         if not isinstance(trigger, dict):
             trigger = {"value": trigger}
         result = await self._run_skill_by_code(skill_code, trigger)
-        # If the skill produced files, register them as downloadable URLs so the model
-        # (and the user) can reference them. Convention: result may include
-        #   "_files": [{"path": "/abs/path", "name": "report.docx", "mime": "..."}]
         result = await self._register_skill_files(result)
         return result
 
@@ -830,6 +931,11 @@ class AgentRunner:
         yield StreamEvent("tool_result", {"tool_use_id": call_id, "content": _json.dumps(result, ensure_ascii=False, default=str)})
         # Surface any saved files registered during execution
         for f in self._saved_files:
+            url = str(f.get("download_url") or "")
+            if url and url in self._emitted_file_urls:
+                continue
+            if url:
+                self._emitted_file_urls.add(url)
             yield StreamEvent("file", f)
         yield StreamEvent("done", {
             "tokens_in": 0, "tokens_out": 0,
@@ -874,6 +980,11 @@ class AgentRunner:
                 await self._extract_fallback_files("".join(self._fallback_text_buf))
             # Emit any saved files BEFORE done so the UI gets file cards in order
             for f in self._saved_files:
+                url = str(f.get("download_url") or "")
+                if url and url in self._emitted_file_urls:
+                    continue
+                if url:
+                    self._emitted_file_urls.add(url)
                 yield StreamEvent("file", f)
             yield StreamEvent("done", {
                 "tokens_in": self._tokens_in,
@@ -992,7 +1103,13 @@ class AgentRunner:
                 )
 
         # multi-turn loop: model may call skill / mcp tools, we execute and feed results back
-        MAX_ITER = 8
+        MAX_ITER = max(1, int(getattr(self.ctx.agent, "max_turns", 5) or 5))
+        # Effort → reasoning_effort (OpenAI / DeepSeek / Qwen reasoning models honor
+        # this; ignored by providers that don't). xhigh/max fall back to "high"
+        # for OpenAI compat since only low/medium/high are universally accepted.
+        effort_oa = _effort_to_openai_reasoning(
+            (getattr(self.ctx.agent, "effort", "medium") or "medium").lower()
+        )
         for _ in range(MAX_ITER):
                 create_kwargs: dict[str, Any] = {
                     "model": model.model_id,
@@ -1004,6 +1121,10 @@ class AgentRunner:
                     create_kwargs["tools"] = tools
                 if model.extra_params_json:
                     create_kwargs["extra_body"] = model.extra_params_json
+                if effort_oa:
+                    # Prefer top-level reasoning_effort; if the SDK rejects it the
+                    # provider may surface an error which is fine for visibility.
+                    create_kwargs["reasoning_effort"] = effort_oa
 
                 stream = await client.chat.completions.create(**create_kwargs)
 
@@ -1094,6 +1215,12 @@ class AgentRunner:
                         result = strip_ui_for_model(result)
                     result_str = _json.dumps(result, ensure_ascii=False, default=str)
                     yield StreamEvent("tool_result", {"tool_use_id": slot["id"], "content": result_str})
+                    if isinstance(result, dict) and isinstance(result.get("file"), dict):
+                        file_info = result["file"]
+                        url = str(file_info.get("download_url") or "")
+                        if url and url not in self._emitted_file_urls:
+                            self._emitted_file_urls.add(url)
+                            yield StreamEvent("file", file_info)
                     messages.append({
                         "role": "tool", "tool_call_id": slot["id"],
                         "content": result_str,
@@ -1331,6 +1458,7 @@ class AgentRunner:
             # in allowed_tools is denied entirely, regardless of permission_mode.
             "permission_mode": "bypassPermissions",
             "allowed_tools": allowed_tools,
+            "max_turns": max(1, int(getattr(self.ctx.agent, "max_turns", 5) or 5)),
             # Belt-and-suspenders: explicitly disallow the dangerous trio in case some
             # SDK version honors disallowed_tools as an extra deny list.
             "disallowed_tools": ["Bash", "Write", "Edit", "NotebookEdit", "WebFetch"],
@@ -1344,6 +1472,19 @@ class AgentRunner:
             options_kwargs["api_key"] = decrypt_str(model.api_key_enc)
         if model.base_url:
             options_kwargs["base_url"] = model.base_url
+
+        # Effort → extended-thinking budget. The SDK exposes this via env var or
+        # an `extra_args` passthrough depending on version, so we set it on
+        # both options and an env hint for the spawned CLI process.
+        effort = (getattr(self.ctx.agent, "effort", "medium") or "medium").lower()
+        thinking_budget = _effort_to_thinking_budget(effort)
+        if thinking_budget:
+            options_kwargs["thinking"] = {"type": "enabled", "budget_tokens": thinking_budget}
+            try:
+                import os as _os
+                _os.environ.setdefault("CLAUDE_THINKING_BUDGET", str(thinking_budget))
+            except Exception:
+                pass
 
         # Filter to only kwargs the installed SDK actually accepts
         sdk_arg_names = ClaudeAgentOptions.__init__.__code__.co_varnames

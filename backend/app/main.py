@@ -8,7 +8,7 @@ from .api import auth, chat, files
 from .api import downloads as downloads_api
 from .api.admin import users as admin_users, models as admin_models, mcp as admin_mcp, \
     skills as admin_skills, agents as admin_agents, logs as admin_logs, \
-    departments as admin_departments
+    departments as admin_departments, packs as admin_packs, approvals as admin_approvals
 from .services.file_cleanup import cleanup_loop
 
 
@@ -47,6 +47,8 @@ app.include_router(admin_skills.router)
 app.include_router(admin_agents.router)
 app.include_router(admin_logs.router)
 app.include_router(admin_departments.router)
+app.include_router(admin_packs.router)
+app.include_router(admin_approvals.router)
 
 
 @app.get("/api/health")

@@ -173,6 +173,28 @@
             </template>
           </el-upload>
         </el-form-item>
+
+        <!-- Security findings: shown after a blocked attempt -->
+        <el-form-item v-if="uploadFindings.length" label="安全扫描">
+          <el-alert type="warning" :closable="false" show-icon
+                   title="检测到潜在风险,请确认后继续">
+            <template #default>
+              <div class="findings-list">
+                <div v-for="(f, i) in uploadFindings.slice(0, 8)" :key="i" class="finding">
+                  <code class="finding-file">{{ f.file }}</code>
+                  <span class="finding-rule">{{ f.rule }}</span>
+                  <span class="finding-snippet">{{ f.snippet }}</span>
+                </div>
+                <div v-if="uploadFindings.length > 8" class="finding muted">
+                  …还有 {{ uploadFindings.length - 8 }} 项
+                </div>
+              </div>
+            </template>
+          </el-alert>
+          <el-checkbox v-model="uploadForm.force" style="margin-top:8px">
+            我已确认上述内容,强制上传
+          </el-checkbox>
+        </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="uploadVisible = false">取消</el-button>
@@ -210,8 +232,9 @@ const yamlText = ref('')
 // upload state
 const uploadVisible = ref(false)
 const uploadFormRef = ref<any>(null)
-const uploadForm = reactive<any>({ code: '', name: '', description: '', file: null as File | null })
+const uploadForm = reactive<any>({ code: '', name: '', description: '', file: null as File | null, force: false })
 const uploading = ref(false)
+const uploadFindings = ref<any[]>([])
 const uploadRules = {
   code: [
     { required: true, message: '请输入编码', trigger: 'blur' },
@@ -352,14 +375,20 @@ function formatSize(b: number) {
 }
 
 function openUpload() {
-  Object.assign(uploadForm, { code: '', name: '', description: '', file: null })
+  Object.assign(uploadForm, { code: '', name: '', description: '', file: null, force: false })
+  uploadFindings.value = []
   uploadVisible.value = true
 }
 function onFileChange(uf: any) {
   uploadForm.file = uf.raw as File
+  // a fresh file should reset prior findings/force decisions
+  uploadFindings.value = []
+  uploadForm.force = false
 }
 function onFileRemove() {
   uploadForm.file = null
+  uploadFindings.value = []
+  uploadForm.force = false
 }
 async function onUploadSubmit() {
   const ok = await uploadFormRef.value?.validate().catch(() => false)
@@ -367,11 +396,29 @@ async function onUploadSubmit() {
   if (!uploadForm.file) { ElMessage.error('请选择 zip 包'); return }
   uploading.value = true
   try {
-    await api.uploadSkill(uploadForm.file, uploadForm.code, uploadForm.name, uploadForm.description)
+    await api.uploadSkill(
+      uploadForm.file, uploadForm.code, uploadForm.name, uploadForm.description, uploadForm.force,
+    )
     ElMessage.success('上传成功')
     uploadVisible.value = false
     await load()
-  } catch {} finally {
+  } catch (e: any) {
+    const detail = e?.response?.data?.detail
+    if (detail && typeof detail === 'object' && Array.isArray(detail.findings)) {
+      // security scan blocked — surface findings inline so admin can review and tick force
+      uploadFindings.value = detail.findings
+      ElMessage.warning(detail.message || '检测到潜在风险,请确认后强制上传')
+    } else if (typeof detail === 'string') {
+      ElMessage.error(detail)
+    } else if (detail && typeof detail === 'object') {
+      const head = detail.message || '上传失败'
+      const hint = detail.hint ? ` (${detail.hint})` : ''
+      ElMessage.error(`${head}${hint}`)
+      console.error('upload skill blocked:', detail)
+    } else {
+      ElMessage.error('上传失败')
+    }
+  } finally {
     uploading.value = false
   }
 }
@@ -444,5 +491,30 @@ async function onUploadSubmit() {
   font-size: 11px; color: var(--m-text-secondary);
   background: var(--m-bg-soft);
   border-top: 1px solid var(--m-border);
+}
+
+.findings-list { max-height: 200px; overflow: auto; font-size: 12px; }
+.finding {
+  display: flex; align-items: center; gap: 8px;
+  padding: 4px 0;
+  border-bottom: 1px dashed var(--m-border);
+}
+.finding:last-child { border-bottom: none; }
+.finding.muted { color: var(--m-text-tertiary); justify-content: center; }
+.finding-file {
+  font-family: 'Roboto Mono', monospace;
+  background: var(--m-surface-variant);
+  padding: 1px 6px; border-radius: 4px;
+  max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  flex-shrink: 0;
+}
+.finding-rule {
+  font-weight: 600; color: var(--m-danger, #d33);
+  flex-shrink: 0;
+}
+.finding-snippet {
+  color: var(--m-text-secondary);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  flex: 1; min-width: 0;
 }
 </style>
