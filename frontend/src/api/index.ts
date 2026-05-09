@@ -55,6 +55,8 @@ export const api = {
   getFile: (id: number) => http.get(`/api/files/${id}`).then((r) => r.data),
   reparseFile: (id: number) => http.post(`/api/files/${id}/reparse`).then((r) => r.data),
   deleteFile: (id: number) => http.delete(`/api/files/${id}`).then((r) => r.data),
+  refreshDownload: (output_path: string) =>
+    http.post('/api/downloads/refresh', null, { params: { output_path } }).then((r) => r.data),
 
   // admin
   roles: () => http.get('/api/admin/roles').then((r) => r.data),

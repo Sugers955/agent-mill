@@ -12,11 +12,11 @@
       </div>
     </div>
     <div class="file-actions">
-      <button class="action-btn" v-if="canPreview" @click="$emit('preview', file)">
+      <button class="action-btn" v-if="canPreview" @click="onPreview">
         <el-icon :size="14"><View /></el-icon>
         <span>预览</span>
       </button>
-      <a class="action-btn" :href="downloadUrl" :download="file.name">
+      <a class="action-btn" :href="downloadUrl" :download="file.name" @click="onDownloadClick">
         <el-icon :size="14"><Download /></el-icon>
         <span>下载</span>
       </a>
@@ -25,10 +25,14 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { ref, computed } from 'vue'
+import { api } from '@/api'
 
-const props = defineProps<{ file: { name: string; size?: number; mime?: string; ext?: string; download_url: string; preview_url?: string } }>()
-defineEmits<{ (e: 'preview', file: any): void }>()
+const props = defineProps<{ file: { name: string; size?: number; mime?: string; ext?: string; download_url: string; preview_url?: string; output_path?: string } }>()
+const emit = defineEmits<{ (e: 'preview', file: any): void }>()
+
+// Local override of download_url after we've refreshed an expired token.
+const refreshedUrl = ref<string>('')
 
 // Only formats the browser can render natively (or we have a light inline renderer for).
 // Office formats (docx/xlsx/pptx) go download-only — preview quality would be poor.
@@ -53,11 +57,60 @@ const canPreview = computed(() => PREVIEWABLE.has(ext.value))
 // Append JWT as ?t= so <a download> (which can't set Authorization) still works.
 const downloadUrl = computed(() => {
   const token = localStorage.getItem('access_token') || ''
-  const url = props.file.download_url || ''
+  const url = refreshedUrl.value || props.file.download_url || ''
   if (!url) return ''
   const sep = url.includes('?') ? '&' : '?'
   return token ? `${url}${sep}t=${encodeURIComponent(token)}` : url
 })
+
+// Try a HEAD-ish ping to detect 410 from an expired download token.
+// If we still have a stable output_path, mint a fresh token and patch the file in-place.
+async function ensureFreshToken(): Promise<string> {
+  const url = refreshedUrl.value || props.file.download_url || ''
+  if (!url) return url
+  if (!props.file.output_path) return url  // no way to refresh — give up
+  try {
+    const r = await fetch(url, { method: 'GET', headers: getAuthHeader() })
+    if (r.ok) return url
+    if (r.status === 410 || r.status === 404 || r.status === 403) {
+      const fresh = await api.refreshDownload(props.file.output_path)
+      if (fresh?.download_url) {
+        refreshedUrl.value = fresh.download_url
+        // Mutate the parent's file object so PreviewPanel (and history) sees the new URL.
+        props.file.download_url = fresh.download_url
+        return fresh.download_url
+      }
+    }
+  } catch { /* network — let the actual click surface the error */ }
+  return url
+}
+
+function getAuthHeader(): Record<string, string> {
+  const t = localStorage.getItem('access_token')
+  return t ? { Authorization: `Bearer ${t}` } : {}
+}
+
+async function onPreview() {
+  await ensureFreshToken()
+  emit('preview', props.file)
+}
+
+async function onDownloadClick(ev: MouseEvent) {
+  // If we already know the token is fresh, let the browser handle it natively.
+  if (refreshedUrl.value) return
+  // We can't await a real download in-anchor; intercept once, refresh, then
+  // re-trigger the click programmatically with the new URL.
+  if (!props.file.output_path) return
+  ev.preventDefault()
+  const fresh = await ensureFreshToken()
+  if (!fresh) return
+  const a = document.createElement('a')
+  a.href = downloadUrl.value
+  a.download = props.file.name || ''
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+}
 
 const iconComp = computed(() => {
   const e = ext.value

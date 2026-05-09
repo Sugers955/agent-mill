@@ -521,24 +521,34 @@ class AgentRunner:
         files = result.get("_files")
         if not isinstance(files, list) or not files:
             return result
+        from pathlib import Path as _P
+        from ..core.config import settings
         from ..db.session import SessionLocal
         from ..services.downloads import register_file
+        outputs_root = (_P(settings.STORAGE_ROOT) / "outputs").resolve()
         registered = []
         async with SessionLocal() as db:
             for f in files:
                 try:
+                    fp = f.get("path") or ""
                     tok = await register_file(
                         db,
-                        file_path=f.get("path"),
+                        file_path=fp,
                         file_name=f.get("name") or "",
                         user_id=self._user_id,
                         mime=f.get("mime") or "application/octet-stream",
                     )
                     await db.commit()
-                    registered.append({
+                    item = {
                         "name": tok.file_name, "size": tok.size, "mime": tok.mime,
                         "download_url": f"/api/downloads/{tok.token}",
-                    })
+                    }
+                    try:
+                        rp = _P(fp).resolve().relative_to(outputs_root)
+                        item["output_path"] = str(rp)
+                    except (ValueError, OSError):
+                        pass
+                    registered.append(item)
                 except Exception as e:  # noqa: BLE001
                     registered.append({"error": f"register failed: {e}"})
         result.pop("_files", None)
@@ -682,10 +692,19 @@ class AgentRunner:
             await db.commit()
             download_url = f"/api/downloads/{tok.token}"
 
+        # Stable handle: relative path under STORAGE_ROOT/outputs. Survives token expiry —
+        # frontend can ask /api/downloads/refresh for a fresh token using this.
+        try:
+            output_path = str(target.relative_to(_Path(settings.STORAGE_ROOT) / "outputs"))
+        except ValueError:
+            output_path = None
+
         info = {
             "name": safe, "size": size, "mime": mime, "ext": ext,
             "download_url": download_url, "preview_url": download_url,
         }
+        if output_path:
+            info["output_path"] = output_path
         self._saved_files.append(info)
         return {
             "ok": True,
@@ -854,11 +873,18 @@ class AgentRunner:
             await db.commit()
             download_url = f"/api/downloads/{tok.token}"
 
+        try:
+            output_path = str(produced.relative_to(_Path(settings.STORAGE_ROOT) / "outputs"))
+        except ValueError:
+            output_path = None
+
         info = {
             "name": safe, "size": size, "mime": mime,
             "ext": _Path(safe).suffix.lower(),
             "download_url": download_url, "preview_url": download_url,
         }
+        if output_path:
+            info["output_path"] = output_path
         self._saved_files.append(info)
         return {"ok": True, "file": info, "message": f"已生成 {safe} ({size} bytes)。前端会显示文件卡片。"}
 

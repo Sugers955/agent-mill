@@ -71,6 +71,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import MarkdownIt from 'markdown-it'
+import { api } from '@/api'
 
 const props = defineProps<{ file: any | null }>()
 defineEmits<{ (e: 'close'): void }>()
@@ -82,6 +83,8 @@ const error = ref('')
 const textContent = ref('')
 const mdHtml = ref('')
 const blobUrl = ref<string>('')
+// Effective URL — starts as props.file.download_url, swapped in-place when token expires.
+const activeUrl = ref<string>('')
 
 const ext = computed(() => {
   if (!props.file) return ''
@@ -111,13 +114,24 @@ const iconComp = computed(() => {
 watch(() => props.file?.download_url, async (url) => {
   // revoke any stale blob
   if (blobUrl.value) { URL.revokeObjectURL(blobUrl.value); blobUrl.value = '' }
-  if (!url || !props.file) return
+  if (!url || !props.file) { activeUrl.value = ''; return }
+  activeUrl.value = url
   error.value = ''
   textContent.value = ''
   mdHtml.value = ''
   loading.value = true
   try {
-    const r = await fetch(url, { headers: getAuthHeader() })
+    let r = await fetch(activeUrl.value, { headers: getAuthHeader() })
+    // Token expired or hit limit: try to mint a fresh one using the stable output_path.
+    if ((r.status === 410 || r.status === 404) && props.file?.output_path) {
+      try {
+        const refreshed = await api.refreshDownload(props.file.output_path)
+        if (refreshed?.download_url) {
+          activeUrl.value = refreshed.download_url
+          r = await fetch(activeUrl.value, { headers: getAuthHeader() })
+        }
+      } catch {}
+    }
     if (!r.ok) throw new Error(`HTTP ${r.status}`)
     const k = kind.value
     if (k === 'md' || k === 'text' || k === 'svg') {
@@ -143,9 +157,10 @@ function getAuthHeader(): Record<string, string> {
 }
 
 // For browser-native links (download / new tab) we can't set headers,
-// so expose the JWT via ?t= on the URL.
+// so expose the JWT via ?t= on the URL. Use the (possibly-refreshed) activeUrl
+// so a "Download" click after token rotation still works.
 const tokenizedUrl = computed(() => {
-  const url = props.file?.download_url || ''
+  const url = activeUrl.value || props.file?.download_url || ''
   if (!url) return ''
   const tok = localStorage.getItem('access_token') || ''
   if (!tok) return url

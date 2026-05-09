@@ -385,7 +385,9 @@ async function onDelete(c: any) {
 }
 
 async function onPickAgent(a: any) {
-  // Same agent: nothing to do.
+  // Collapse the agent picker panel regardless — the user has made a choice.
+  subPanel.value = null
+  // Same agent: nothing else to do.
   if (a?.id === chat.currentAgent?.id) return
   chat.selectAgent(a)
   // If there's an active conversation, force a brand-new one with the new agent

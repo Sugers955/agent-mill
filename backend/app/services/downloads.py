@@ -35,7 +35,7 @@ async def register_file(
     user_id: int | None,
     *,
     mime: str = "application/octet-stream",
-    ttl_hours: int = 24,
+    ttl_hours: int = 72,
     max_downloads: int = 0,
 ) -> DownloadToken:
     """Generate a download token for a file. Validates path is under allowed roots."""
