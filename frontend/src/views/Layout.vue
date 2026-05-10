@@ -167,7 +167,7 @@
                   placement="right-start"
                   :width="320"
                   trigger="click"
-                  @before-enter="ensureCaps(a.id)"
+                  @before-enter="ensureCaps(a.id, true)"
                 >
                   <template #reference>
                     <a class="cap-link" @click.stop>
@@ -196,7 +196,7 @@
                 placement="right-start"
                 :width="380"
                 trigger="click"
-                @before-enter="ensureCaps(a.id)"
+                @before-enter="ensureCaps(a.id, true)"
               >
                 <template #reference>
                   <a class="cap-link" @click.stop>
@@ -320,13 +320,16 @@ const mcpToolsError = reactive<Record<string, string>>({})
 const mcpToolsExpanded = reactive<Record<string, boolean>>({})
 const mcpKey = (aid: number, mid: number) => `${aid}:${mid}`
 
-async function ensureCaps(agentId: number) {
-  if (caps[agentId] || capsLoading[agentId]) return
+async function ensureCaps(agentId: number, force = false) {
+  // popover/drawer reopen flow: when `force` is true, always refetch so we
+  // pick up admin edits to user_summary / tool_summaries that happened after
+  // the first cache hit.
+  if (!force && (caps[agentId] || capsLoading[agentId])) return
   capsLoading[agentId] = true
   try {
     caps[agentId] = await api.agentCapabilities(agentId)
   } catch {
-    caps[agentId] = { model: null, skills: [], mcps: [] }
+    if (!caps[agentId]) caps[agentId] = { model: null, skills: [], mcps: [] }
   } finally {
     capsLoading[agentId] = false
   }

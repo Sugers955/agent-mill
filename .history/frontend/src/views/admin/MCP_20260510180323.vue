@@ -20,7 +20,7 @@
       <el-table-column label="协议" width="80" align="center">
         <template #default="{ row }"><el-tag size="small">{{ row.transport }}</el-tag></template>
       </el-table-column>
-      <el-table-column label="使用说明" min-width="180" show-overflow-tooltip>
+      <el-table-column label="使用说明" min-width="160" show-overflow-tooltip>
         <template #default="{ row }">
           <span v-if="row.user_summary">{{ row.user_summary }}</span>
           <span v-else class="muted">—</span>
@@ -37,7 +37,7 @@
       <el-table-column label="启用" width="60" align="center">
         <template #default="{ row }"><el-tag :type="row.enabled ? 'success' : 'info'" size="small">{{ row.enabled ? '是' : '否' }}</el-tag></template>
       </el-table-column>
-      <el-table-column label="操作" width="290" fixed="right">
+      <el-table-column label="操作" width="280" fixed="right">
         <template #default="{ row }">
           <div class="row-actions" @click.stop>
             <el-button size="small" text @click.stop="openTools(row)">查看工具</el-button>
