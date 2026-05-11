@@ -17,14 +17,14 @@
       </el-button>
     </div>
 
-    <div class="grid">
+    <div class="grid" :class="{ 'no-image': allImagesMissing }">
       <div
         v-for="(item, i) in displayItems"
         :key="item.id || i"
         class="card"
         @click="cardAction && fire(cardAction, i, item)"
       >
-        <div class="img-wrap">
+        <div v-if="!allImagesMissing" class="img-wrap">
           <img
             v-if="pickImage(item) && !brokenImages[i]"
             :src="pickImage(item)"
@@ -33,7 +33,6 @@
           />
           <div v-else class="img-placeholder" :style="{ background: placeholderColor(i) }">
             <span class="ph-letter">{{ pickTitle(item).slice(0, 1) }}</span>
-            <span class="ph-name">{{ pickTitle(item) }}</span>
           </div>
         </div>
         <div class="card-body">
@@ -105,6 +104,14 @@ const displayItems = computed(() => {
   else if (activeSort.value === 'rating') items.sort((a: any, b: any) => (b.rating ?? 0) - (a.rating ?? 0))
   return items
 })
+
+// True when not a single item carries an image. In that case we render a
+// compact image-less card layout — much cleaner than showing a row of giant
+// gradient-letter placeholders, which is what ask_user_pick / ask_user_form
+// produces most of the time (the model rarely has real cover images for
+// follow-up questions).
+const allImagesMissing = computed(() =>
+  displayItems.value.length > 0 && displayItems.value.every((it: any) => !pickImage(it)))
 
 // ---------- Field-name fallbacks ----------
 // CardList tries common aliases so MCPs / Skills with different naming
@@ -194,6 +201,14 @@ function onPage(page: number) {
 .muted { color: var(--m-text-secondary); font-size: 12px; }
 .filter-bar { display:flex; gap: 6px; flex-wrap: wrap; }
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+
+/* When the whole batch has no images (typical for ask_user_pick follow-ups),
+   collapse to a compact text-card grid — no awkward letter placeholders. */
+.grid.no-image { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; }
+.grid.no-image .card { min-height: 0; }
+.grid.no-image .card-body { padding: 12px 14px; gap: 4px; }
+.grid.no-image .card-name { font-size: 14.5px; }
+
 .card {
   border: 1px solid var(--m-border); border-radius: var(--m-radius);
   background: var(--m-surface); cursor: pointer; overflow: hidden;
@@ -204,22 +219,13 @@ function onPage(page: number) {
 .img-wrap img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .img-placeholder {
   width: 100%; height: 100%;
-  display: flex; flex-direction: column;
-  align-items: center; justify-content: center;
-  gap: 4px;
-  color: rgba(15,23,42,.6);
+  display: flex; align-items: center; justify-content: center;
+  color: rgba(15,23,42,.55);
   font-family: 'Inter', sans-serif;
 }
 .img-placeholder .ph-letter {
   font-size: 38px; font-weight: 700; line-height: 1;
-  color: rgba(15,23,42,.55);
   letter-spacing: -0.02em;
-}
-.img-placeholder .ph-name {
-  font-size: 11px; font-weight: 500;
-  color: rgba(15,23,42,.5);
-  text-align: center; padding: 0 12px;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%;
 }
 .card-body { padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
 .card-name { font-weight: 600; font-size: 14px; color: var(--m-text); }

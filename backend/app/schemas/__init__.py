@@ -437,3 +437,32 @@ class NotificationPage(BaseModel):
 
 class EmailUpdateIn(BaseModel):
     email: str | None = Field(default=None, max_length=256)
+
+
+# ---------- Favorites (Space) ----------
+class FavoriteCreate(BaseModel):
+    message_id: int
+    note: str | None = Field(default=None, max_length=500)
+
+
+class FavoriteUpdate(BaseModel):
+    note: str | None = Field(default=None, max_length=500)
+
+
+class FavoriteOut(ORM):
+    id: int
+    conversation_id: int | None = None
+    message_id: int | None = None
+    question_text: str
+    answer_text: str
+    files: list[dict[str, Any]] = Field(default_factory=list)
+    agent_id: int | None = None
+    agent_name: str | None = None
+    model_code: str | None = None
+    note: str | None = None
+    created_at: datetime
+
+
+class FavoritePage(BaseModel):
+    items: list[FavoriteOut]
+    total: int

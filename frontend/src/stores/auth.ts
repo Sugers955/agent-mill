@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { api } from '@/api'
 import { useChat } from './chat'
+import { clearActivity, resetActivityNow } from '@/lib/activity'
 
 export const useAuth = defineStore('auth', {
   state: () => ({ user: null as any | null }),
@@ -14,6 +15,8 @@ export const useAuth = defineStore('auth', {
       const res = await api.login(username, password)
       localStorage.setItem('access_token', res.access_token)
       localStorage.setItem('refresh_token', res.refresh_token)
+      // A fresh session always starts the idle clock from zero.
+      resetActivityNow()
       useChat().reset()
       await this.fetchMe()
     },
@@ -23,6 +26,7 @@ export const useAuth = defineStore('auth', {
     logout() {
       localStorage.removeItem('access_token')
       localStorage.removeItem('refresh_token')
+      clearActivity()
       this.user = null
       useChat().reset()
     },

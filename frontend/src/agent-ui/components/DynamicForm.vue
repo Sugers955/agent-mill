@@ -6,7 +6,6 @@
         v-for="c in schema.components"
         :key="c.id"
         :label="c.props?.label || c.id"
-        :required="!!c.props?.required"
       >
         <el-input v-if="c.type === 'Input'" v-model="form[c.id]" :placeholder="c.props?.placeholder" />
         <el-input v-else-if="c.type === 'Textarea'" v-model="form[c.id]" type="textarea" :rows="c.props?.rows || 3" />

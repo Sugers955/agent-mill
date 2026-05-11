@@ -340,3 +340,38 @@ class Notification(Base):
     read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
 
+
+
+class Favorite(Base):
+    """User-curated Q&A bookmark stored in the personal "Space".
+
+    Holds full text snapshots of the question + answer so deleting the source
+    conversation/message still leaves the favorite readable. The FK columns
+    are soft references (SET NULL) used for the optional "jump back to
+    original conversation" button.
+    """
+    __tablename__ = "favorites"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+
+    conversation_id: Mapped[int | None] = mapped_column(ForeignKey("conversations.id", ondelete="SET NULL"))
+    message_id: Mapped[int | None] = mapped_column(ForeignKey("messages.id", ondelete="SET NULL"))
+
+    question_text: Mapped[str] = mapped_column(Text)
+    answer_text: Mapped[str] = mapped_column(Text)
+    # Snapshot of assistant-generated file cards (download_url + output_path so
+    # the FileCard component can keep refreshing expired tokens forever).
+    files_json: Mapped[list[Any] | None] = mapped_column(JSON)
+
+    # snapshots — survive even after the agent/model is deleted
+    agent_id: Mapped[int | None] = mapped_column(Integer)
+    agent_name: Mapped[str | None] = mapped_column(String(128))
+    model_code: Mapped[str | None] = mapped_column(String(64))
+
+    note: Mapped[str | None] = mapped_column(String(500))
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "message_id", name="uq_favorites_user_message"),
+    )

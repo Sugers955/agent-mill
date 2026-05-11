@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { api } from '@/api'
+import { useSpace } from './space'
 
 export const useChat = defineStore('chat', {
   state: () => ({
@@ -46,6 +47,7 @@ export const useChat = defineStore('chat', {
       this.messages = []
       this.pendingFiles = []
       this.loaded = false
+      useSpace().reset()
     },
     /** "New conversation" UX action — local-only reset that surfaces the
      *  welcome screen for the current agent. We deliberately do NOT call the
@@ -79,6 +81,11 @@ export const useChat = defineStore('chat', {
       if (a) this.currentAgent = a
       this.messages = await api.messages(c.id)
       this.pendingFiles = []
+      // Refresh which assistant messages are favorited so star icons render.
+      const ids = this.messages
+        .filter((m: any) => m.role === 'assistant' && Number.isFinite(m.id))
+        .map((m: any) => m.id as number)
+      useSpace().loadForMessages(ids)
     },
     async renameConv(c: any, title: string) {
       const updated = await api.renameConversation(c.id, title)

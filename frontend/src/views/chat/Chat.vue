@@ -38,7 +38,8 @@
             v-for="m in chat.messages"
             v-show="!(m.role === 'user' && m.content_json?.hidden)"
             :key="m.id || m._tmp"
-            :class="['msg', m.role]"
+            :class="['msg', m.role, { 'is-highlighted': highlightedMessageId === m.id }]"
+            :data-mid="m.id"
           >
             <div v-if="m.role === 'assistant'" :class="['avatar', 'bot', { 'is-thinking': isWaiting(m) }]">
               <span class="dot dot-1" /><span class="dot dot-2" />
@@ -152,6 +153,29 @@
                   </template>
                 </template>
               </div>
+
+              <!-- assistant message action bar (copy + favorite) -->
+              <div
+                v-if="m.role === 'assistant' && m.content_json?.text && !m._streaming"
+                class="msg-actions"
+              >
+                <button class="msg-action" @click="copyAnswer(m)" title="复制回答">
+                  <el-icon :size="14"><DocumentCopy /></el-icon>
+                  <span>复制</span>
+                </button>
+                <button
+                  class="msg-action"
+                  :class="{ active: isFavorited(m) }"
+                  @click="toggleFavorite(m)"
+                  :title="isFavorited(m) ? '取消收藏' : '收藏到空间'"
+                >
+                  <el-icon :size="14">
+                    <StarFilled v-if="isFavorited(m)" />
+                    <Star v-else />
+                  </el-icon>
+                  <span>{{ isFavorited(m) ? '已收藏' : '收藏' }}</span>
+                </button>
+              </div>
             </div>
           </div>
         </template>
@@ -215,9 +239,10 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, nextTick, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { api } from '@/api'
 import { useChat } from '@/stores/chat'
+import { useSpace } from '@/stores/space'
 import MarkdownIt from 'markdown-it'
 import WidgetRenderer from '@/components/WidgetRenderer.vue'
 import FileCard from '@/components/FileCard.vue'
@@ -230,6 +255,7 @@ import { parseMessageContent } from '@/lib/widget-parser'
 
 const md = new MarkdownIt({ breaks: true, linkify: true })
 const chat = useChat()
+const space = useSpace()
 const route = useRoute()
 
 const input = ref('')
@@ -274,6 +300,27 @@ function useStarter(q: string) {
 
 function closePreview() { previewFile.value = null }
 
+// "Jump back to original conversation" support — Space.vue routes to
+// /chat?msg=<id> after selectConv-ing the right conversation. We then scroll
+// that message into view and flash a highlight ring on it for ~1.6s.
+const highlightedMessageId = ref<number | null>(null)
+let highlightTimer: any = null
+async function scrollToMessage(messageId: number) {
+  if (!messageId) return
+  for (let i = 0; i < 12; i++) {
+    await nextTick()
+    const el = document.querySelector(`.msg[data-mid="${messageId}"]`) as HTMLElement | null
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      highlightedMessageId.value = messageId
+      if (highlightTimer) clearTimeout(highlightTimer)
+      highlightTimer = setTimeout(() => { highlightedMessageId.value = null }, 1600)
+      return
+    }
+    await new Promise((r) => setTimeout(r, 80))  // wait for messages to render
+  }
+}
+
 onMounted(async () => {
   if (!chat.loaded) await chat.loadInit()
   // Deep-link: /chat?conv=N opens an existing conversation (e.g. from a task run).
@@ -285,10 +332,20 @@ onMounted(async () => {
     try { await chat.selectConv(conv) } catch {}
   }
   await scrollBottom()
+  // Deep-link: /chat?msg=N highlights & scrolls to that message.
+  const msgQuery = route.query.msg
+  const msgId = Array.isArray(msgQuery) ? Number(msgQuery[0]) : Number(msgQuery)
+  if (msgId && !Number.isNaN(msgId)) await scrollToMessage(msgId)
 })
 
 watch(() => chat.currentConvId, async () => {
   await scrollBottom()
+})
+
+// Re-trigger scroll when ?msg= changes while already on /chat
+watch(() => route.query.msg, async (val) => {
+  const id = Array.isArray(val) ? Number(val[0]) : Number(val)
+  if (id && !Number.isNaN(id)) await scrollToMessage(id)
 })
 
 async function onPick(uploadFile: any) {
@@ -470,6 +527,83 @@ function isWaiting(m: any): boolean {
 // (we got `meta`) but before any visible token.
 function thinkingLabel(m: any): string {
   return m._meta ? '正在思考' : '正在连接智能体'
+}
+
+// -------- Copy / Favorite (message action bar) --------
+
+function plainTextFromMarkdown(md_src: string): string {
+  // Strip common markdown markers for the plaintext clipboard slot. Keeps
+  // line breaks, list bullets become "- ", removes inline emphasis.
+  let s = md_src
+  s = s.replace(/```([\s\S]*?)```/g, (_m, code) => code)         // code fences → bare code
+  s = s.replace(/`([^`]+)`/g, '$1')                              // inline code
+  s = s.replace(/\*\*([^*]+)\*\*/g, '$1').replace(/\*([^*]+)\*/g, '$1')
+  s = s.replace(/__([^_]+)__/g, '$1').replace(/_([^_]+)_/g, '$1')
+  s = s.replace(/^#{1,6}\s+/gm, '')                              // headings
+  s = s.replace(/^\s*[-*+]\s+/gm, '• ')                          // bullets
+  s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1 ($2)')           // links
+  return s
+}
+
+async function copyAnswer(m: any) {
+  const text = m.content_json?.text || ''
+  if (!text) return
+  const html = md.render(text)
+  const plain = plainTextFromMarkdown(text)
+  try {
+    if (typeof (window as any).ClipboardItem === 'function' && navigator.clipboard?.write) {
+      const item = new ClipboardItem({
+        'text/html': new Blob([html], { type: 'text/html' }),
+        'text/plain': new Blob([plain], { type: 'text/plain' }),
+      })
+      await navigator.clipboard.write([item])
+    } else {
+      await navigator.clipboard.writeText(plain)
+    }
+    ElMessage.success('已复制')
+  } catch {
+    // last-resort fallback for older browsers / non-HTTPS dev hosts
+    try {
+      const ta = document.createElement('textarea')
+      ta.value = plain
+      document.body.appendChild(ta)
+      ta.select()
+      document.execCommand('copy')
+      ta.remove()
+      ElMessage.success('已复制')
+    } catch {
+      ElMessage.error('复制失败')
+    }
+  }
+}
+
+function isFavorited(m: any): boolean {
+  return space.isFavorited(m?.id)
+}
+
+async function toggleFavorite(m: any) {
+  if (!m?.id) {
+    ElMessage.warning('该消息还未保存,稍后再试')
+    return
+  }
+  if (isFavorited(m)) {
+    try {
+      await ElMessageBox.confirm('确定取消收藏吗?', '确认', { type: 'warning' })
+    } catch { return }
+    try {
+      await space.unfavorite(m.id)
+      ElMessage.success('已取消收藏')
+    } catch (e: any) {
+      ElMessage.error(e?.response?.data?.detail || '操作失败')
+    }
+  } else {
+    try {
+      await space.favorite(m.id)
+      ElMessage.success('已加入空间')
+    } catch (e: any) {
+      ElMessage.error(e?.response?.data?.detail || '操作失败')
+    }
+  }
 }
 
 async function scrollBottom() {
@@ -724,6 +858,40 @@ function applyEvent(m: any, ev: { type: string; data: any }) {
   border-radius: var(--m-radius-lg);
   font-size: 14.5px; line-height: 1.65; word-break: break-word;
 }
+
+/* "Jump back" highlight from /chat?msg=<id> */
+.msg.is-highlighted .bubble {
+  animation: msg-flash 1.6s ease-out;
+}
+@keyframes msg-flash {
+  0%   { box-shadow: 0 0 0 0 var(--m-primary-soft); background: var(--m-primary-soft); }
+  60%  { box-shadow: 0 0 0 6px transparent; background: var(--m-primary-soft); }
+  100% { box-shadow: 0 0 0 0 transparent; background: var(--m-bg-soft); }
+}
+
+/* assistant message action bar — sits beneath the bubble */
+.msg-actions {
+  display: flex; align-items: center; gap: 4px;
+  margin-top: 4px;
+  padding: 0 4px;
+  opacity: .5;
+  transition: opacity .15s ease;
+}
+.msg:hover .msg-actions { opacity: 1; }
+.msg-action {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 4px 8px;
+  font-size: 12px;
+  color: var(--m-text-secondary);
+  background: transparent;
+  border: none;
+  border-radius: var(--m-radius);
+  cursor: pointer;
+  transition: background .15s, color .15s;
+}
+.msg-action:hover { background: var(--m-surface-variant); color: var(--m-text); }
+.msg-action.active { color: var(--m-primary); }
+.msg-action.active:hover { background: var(--m-primary-soft); color: var(--m-primary-hover); }
 .msg.user .bubble {
   background: var(--m-primary); color: #fff; border-color: transparent;
   border-radius: var(--m-radius-lg) var(--m-radius-sm) var(--m-radius-lg) var(--m-radius-lg);

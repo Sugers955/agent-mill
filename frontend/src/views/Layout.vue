@@ -50,6 +50,9 @@
           <router-link to="/tasks" class="rail-item" active-class="active">
             <el-icon :size="20"><AlarmClock /></el-icon><span>任务</span>
           </router-link>
+          <router-link to="/space" class="rail-item" active-class="active">
+            <el-icon :size="20"><Star /></el-icon><span>空间</span>
+          </router-link>
           <router-link to="/admin/models" class="rail-item" active-class="active">
             <el-icon :size="20"><Cpu /></el-icon><span>模型</span>
           </router-link>
@@ -80,6 +83,9 @@
 
           <router-link to="/tasks" class="rail-item" active-class="active">
             <el-icon :size="20"><AlarmClock /></el-icon><span>任务</span>
+          </router-link>
+          <router-link to="/space" class="rail-item" active-class="active">
+            <el-icon :size="20"><Star /></el-icon><span>空间</span>
           </router-link>
 
           <div class="rail-divider">对话历史</div>

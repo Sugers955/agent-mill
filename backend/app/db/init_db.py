@@ -14,7 +14,7 @@ from app.db.models import Role, User
 
 DEFAULT_ROLES = [
     {"code": "admin", "name": "超级管理员", "description": "全部权限"},
-    {"code": "operator", "name": "运营管理员", "description": "可配置 Skill/MCP/Agent"},
+    {"code": "operator", "name": "运营管理员", "description": "可配置 Skill / MCP / 智能体 / 模型 / Solution Pack / 日志"},
     {"code": "user", "name": "普通用户", "description": "仅使用智能体"},
 ]
 

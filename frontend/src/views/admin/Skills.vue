@@ -28,7 +28,7 @@
       <el-table-column prop="enabled" label="启用" width="60" align="center">
         <template #default="{ row }"><el-tag :type="row.enabled ? 'success' : 'info'" size="small">{{ row.enabled ? '是' : '否' }}</el-tag></template>
       </el-table-column>
-      <el-table-column label="操作" width="280" fixed="right">
+      <el-table-column label="操作" width="240" fixed="right">
         <template #default="{ row }">
           <div class="row-actions">
             <el-button v-if="row.source_json?.path" size="small" text @click="openDetail(row)"><el-icon><View /></el-icon>详情</el-button>

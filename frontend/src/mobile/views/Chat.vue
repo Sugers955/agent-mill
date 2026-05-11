@@ -20,7 +20,21 @@
         </div>
         <h2 v-if="chat.currentAgent">你好，我是 {{ chat.currentAgent.name }}</h2>
         <h2 v-else>暂无可用智能体</h2>
-        <p v-if="chat.currentAgent">{{ chat.currentAgent.description || '在下方输入开始对话' }}</p>
+        <template v-if="chat.currentAgent">
+          <p v-if="welcomeIntro" class="welcome-intro">{{ welcomeIntro }}</p>
+          <div v-if="welcomeStarters.length" class="welcome-starters">
+            <button
+              v-for="(q, qi) in welcomeStarters"
+              :key="qi"
+              class="starter-chip"
+              :disabled="sending || !chat.currentAgent"
+              @click="useStarter(q)"
+            >
+              {{ q }}
+            </button>
+          </div>
+          <p v-if="!welcomeIntro && !welcomeStarters.length" class="welcome-intro">在下方输入开始对话</p>
+        </template>
         <p v-else>请联系管理员授权</p>
       </div>
 
@@ -268,7 +282,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, nextTick, onMounted, onBeforeUnmount, watch } from 'vue'
+import { ref, reactive, computed, nextTick, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import MarkdownIt from 'markdown-it'
 import { useMobileChat } from '../stores/chat'
@@ -286,6 +300,33 @@ const route = useRoute()
 
 const input = ref('')
 const sending = ref(false)
+
+/** Same parser as desktop Chat.vue: split agent description into intro lines
+ *  and starter questions (lines starting with '- ', '• ', '* ' or '1.'). */
+const parsedWelcome = computed<{ intro: string; starters: string[] }>(() => {
+  const desc = chat.currentAgent?.description || ''
+  if (!desc) return { intro: '', starters: [] }
+  const starterRe = /^\s*(?:[-•*]|\d+[.、])\s+(.+)$/
+  const introLines: string[] = []
+  const starters: string[] = []
+  for (const raw of desc.split(/\r?\n/)) {
+    const m = raw.match(starterRe)
+    if (m && m[1].trim()) {
+      starters.push(m[1].trim())
+    } else if (raw.trim()) {
+      introLines.push(raw.trim())
+    }
+  }
+  return { intro: introLines.join(' '), starters: starters.slice(0, 4) }
+})
+const welcomeIntro = computed(() => parsedWelcome.value.intro)
+const welcomeStarters = computed(() => parsedWelcome.value.starters)
+
+function useStarter(q: string) {
+  if (!q || sending.value || !chat.currentAgent) return
+  input.value = q
+  send()
+}
 const scrollRef = ref<HTMLElement | null>(null)
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const fileInput = ref<HTMLInputElement | null>(null)
@@ -716,6 +757,40 @@ function applyEvent(m: any, ev: { type: string; data: any }) {
 .d3 { background:#fbbc04 } .d4 { background:#34a853 }
 .welcome h2 { margin: 6px 0 4px; font-size: 18px; color: var(--m-text); font-weight: 600; }
 .welcome p { margin: 0; font-size: 13px; }
+.welcome-intro {
+  margin: 0; padding: 0 16px;
+  max-width: 100%;
+  color: var(--m-text-secondary, #5f6368);
+  line-height: 1.6;
+  font-size: 13px;
+}
+.welcome-starters {
+  margin-top: 14px;
+  padding: 0 16px;
+  display: flex; flex-direction: column; gap: 8px;
+  align-items: stretch;
+  width: 100%; max-width: 480px;
+}
+.starter-chip {
+  appearance: none;
+  width: 100%;
+  text-align: left;
+  font-size: 13px; line-height: 1.5;
+  padding: 10px 14px;
+  border: 1px solid var(--m-border, #e8eaed);
+  border-radius: 12px;
+  background: #ffffff;
+  color: var(--m-text, #202124);
+  -webkit-tap-highlight-color: transparent;
+  transition: background .15s, border-color .15s, transform .1s;
+  box-shadow: 0 1px 2px rgba(60,64,67,.04);
+}
+.starter-chip:active:not(:disabled) {
+  transform: scale(.99);
+  background: #f8f9fa;
+  border-color: #aecbfa;
+}
+.starter-chip:disabled { opacity: .55; }
 
 .msg { display: flex; margin: 10px 0; }
 .msg.user { justify-content: flex-end; }

@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .core.config import settings
 from .api import auth, chat, files, tasks as tasks_api, notifications as notifications_api
 from .api import downloads as downloads_api
+from .api import favorites as favorites_api
 from .api.admin import users as admin_users, models as admin_models, mcp as admin_mcp, \
     skills as admin_skills, agents as admin_agents, logs as admin_logs, \
     departments as admin_departments, packs as admin_packs, approvals as admin_approvals
@@ -35,6 +36,8 @@ async def _auto_migrate() -> None:
             "ALTER TABLE mcp_connectors ADD COLUMN IF NOT EXISTS user_summary TEXT",
             "ALTER TABLE mcp_connectors ADD COLUMN IF NOT EXISTS tool_summaries_json JSON",
             "ALTER TABLE mcp_connectors ADD COLUMN IF NOT EXISTS user_summary_updated_at TIMESTAMP WITH TIME ZONE",
+            # favorites: snapshot of generated files attached to the answer
+            "ALTER TABLE favorites ADD COLUMN IF NOT EXISTS files_json JSON",
         ]:
             try:
                 await conn.exec_driver_sql(stmt)
@@ -89,6 +92,7 @@ app.include_router(downloads_api.router)
 app.include_router(tasks_api.router)
 app.include_router(tasks_api.detail_router)
 app.include_router(notifications_api.router)
+app.include_router(favorites_api.router)
 app.include_router(admin_users.router)
 app.include_router(admin_models.router)
 app.include_router(admin_mcp.router)

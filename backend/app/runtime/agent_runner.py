@@ -1392,6 +1392,10 @@ class AgentRunner:
         from contextlib import AsyncExitStack
         import json as _json
 
+        # Wall-clock start so the `done` event can report latency_ms even when
+        # we hit the halt-after-tools branch (which references `start` below).
+        start = time.time()
+
         model = self.ctx.model
         if not model:
             yield StreamEvent("error", {"message": "未配置默认模型"})

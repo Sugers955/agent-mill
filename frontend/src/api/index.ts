@@ -132,4 +132,18 @@ export const api = {
     http.get('/api/admin/logs/calls', { params: { limit: 20, offset: 0, ...params } }).then((r) => r.data),
   auditLogs: (params: { limit?: number; offset?: number; user_id?: number } = {}) =>
     http.get('/api/admin/logs/audit', { params: { limit: 20, offset: 0, ...params } }).then((r) => r.data),
+
+  // favorites (Space)
+  favorites: (params: { q?: string; agent_id?: number; limit?: number; offset?: number } = {}) =>
+    http.get('/api/favorites', { params: { limit: 20, offset: 0, ...params } }).then((r) => r.data),
+  createFavorite: (message_id: number, note?: string) =>
+    http.post('/api/favorites', { message_id, note }).then((r) => r.data),
+  updateFavorite: (id: number, note: string | null) =>
+    http.patch(`/api/favorites/${id}`, { note }).then((r) => r.data),
+  deleteFavorite: (id: number) =>
+    http.delete(`/api/favorites/${id}`).then((r) => r.data),
+  deleteFavoriteByMessage: (message_id: number) =>
+    http.delete(`/api/favorites/by-message/${message_id}`).then((r) => r.data),
+  checkFavorites: (message_ids: number[]) =>
+    http.get('/api/favorites/check', { params: { message_ids: message_ids.join(',') } }).then((r) => r.data as Record<string, number>),
 }
