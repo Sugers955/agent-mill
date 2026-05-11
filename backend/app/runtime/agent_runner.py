@@ -1468,34 +1468,64 @@ class AgentRunner:
                     messages.append({"role": "assistant", "content": text})
         messages.append({"role": "user", "content": prompt})
 
-        # ---- MCP integration: short-lived connections only ----
-        # Long-lived sessions held across an async generator's lifetime trigger
-        # anyio cancel-scope errors when FastAPI streams switch tasks. So we:
-        # 1) Connect once up front *just* to enumerate tools, then disconnect.
-        # 2) On each tool call, open a fresh connection, call, close.
-        # Connect+close are always in the same task, no scope leakage.
+        # ---- MCP integration: cached tool list + parallel fallback ----
+        # Hot path: read each MCP's tool list from `tool_summaries_json` (admin
+        # populates this via "重新生成介绍" / on connector save). This avoids
+        # per-request connect+initialize+list_tools handshakes which dominate
+        # TTFT when an agent has multiple MCP servers.
+        # If a server's cache is empty/missing, fall back to real-time list —
+        # but parallelized across MCPs so we pay max(latency) instead of sum.
         mcp_tool_routes: dict[str, tuple[str, "MCPConnector"]] = {}  # exposed -> (raw_tool, mcp row)
+
+        def _ingest_tool_list(mcp, tools_list: list[dict[str, Any]]) -> None:
+            for t in tools_list:
+                name = t.get("name")
+                if not name:
+                    continue
+                exposed = self._mcp_tool_name(mcp.name, name)
+                mcp_tool_routes[exposed] = (name, mcp)
+                # Prefer raw_description (live tool description) for the
+                # function-calling system; fall back to the LLM-rewritten
+                # `description` if no raw is cached.
+                desc = t.get("raw_description") or t.get("description") or name
+                tools.append({
+                    "type": "function",
+                    "function": {
+                        "name": exposed,
+                        "description": f"[MCP:{mcp.name}] {desc}",
+                        "parameters": t.get("input_schema") or {"type": "object"},
+                    },
+                })
+
+        mcps_needing_live: list = []
         for mcp in self.ctx.mcps:
-            try:
-                tools_list = await self._list_mcp_tools_once(mcp)
-                for t in tools_list:
-                    exposed = self._mcp_tool_name(mcp.name, t["name"])
-                    mcp_tool_routes[exposed] = (t["name"], mcp)
-                    tools.append({
-                        "type": "function",
-                        "function": {
-                            "name": exposed,
-                            "description": f"[MCP:{mcp.name}] {t.get('description') or t['name']}",
-                            "parameters": t.get("input_schema") or {"type": "object"},
-                        },
-                    })
-            except Exception as e:  # noqa: BLE001
-                # Silently skip a broken MCP — don't pollute the user-facing transcript.
-                # The model just won't see this server's tools this turn.
-                import logging as _lg
-                _lg.getLogger(__name__).warning(
-                    "MCP %s tool enumeration failed: %s", mcp.name, e
-                )
+            cache = (mcp.tool_summaries_json or {}).get("items") if mcp.tool_summaries_json else None
+            # Only trust cache entries that include input_schema — older caches
+            # without it can't drive function calls; force a live refresh.
+            usable_cache = (
+                isinstance(cache, list)
+                and cache
+                and any(isinstance(it, dict) and it.get("input_schema") for it in cache)
+            )
+            if usable_cache:
+                _ingest_tool_list(mcp, [it for it in cache if isinstance(it, dict)])
+            else:
+                mcps_needing_live.append(mcp)
+
+        if mcps_needing_live:
+            import logging as _lg
+            _log = _lg.getLogger(__name__)
+            async def _safe_list(m):
+                try:
+                    return m, await self._list_mcp_tools_once(m), None
+                except Exception as e:  # noqa: BLE001
+                    return m, [], e
+            results = await asyncio.gather(*[_safe_list(m) for m in mcps_needing_live])
+            for m, tools_list, err in results:
+                if err is not None:
+                    _log.warning("MCP %s tool enumeration failed: %s", m.name, err)
+                    continue
+                _ingest_tool_list(m, tools_list)
 
         # multi-turn loop: model may call skill / mcp tools, we execute and feed results back
         MAX_ITER = max(1, int(getattr(self.ctx.agent, "max_turns", 15) or 15))

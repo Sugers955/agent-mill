@@ -99,7 +99,7 @@ class Agent(Base, TimestampMixin):
     fallback_model_id: Mapped[int | None] = mapped_column(ForeignKey("models.id"))
     upload_policy_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     max_turns: Mapped[int] = mapped_column(Integer, default=15, server_default="15")
-    effort: Mapped[str] = mapped_column(String(16), default="medium", server_default="medium")
+    effort: Mapped[str] = mapped_column(String(16), default="low", server_default="low")
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     is_default: Mapped[bool] = mapped_column(Boolean, default=False)
 

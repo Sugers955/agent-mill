@@ -184,7 +184,7 @@ function emptyForm() {
   return {
     code: '', name: '', description: '', icon: '', system_prompt: '',
     default_model_id: null, fallback_model_id: null,
-    upload_policy_json: {}, max_turns: 15, effort: 'medium',
+    upload_policy_json: {}, max_turns: 15, effort: 'low',
     enabled: true, is_default: false,
     skill_ids: [], mcp_ids: [], pack_ids: [], role_ids: [],
   }
@@ -214,7 +214,7 @@ function openEdit(row: any) {
   editing.value = row
   Object.assign(form, emptyForm(), JSON.parse(JSON.stringify(row)))
   if (form.max_turns == null) form.max_turns = 15
-  if (!form.effort) form.effort = 'medium'
+  if (!form.effort) form.effort = 'low'
   const policy = row.upload_policy_json || {}
   extText.value = (policy.allowed_ext || []).join(',')
   maxSizeMb.value = Number(policy.max_size_mb || 0)

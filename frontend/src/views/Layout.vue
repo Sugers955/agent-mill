@@ -142,10 +142,6 @@
             <div class="agent-row">
               <span class="agent-name">{{ a.name }}</span>
               <el-tag v-if="a.id === chat.defaultAgent?.id" size="small" effect="light" type="primary">默认</el-tag>
-              <a class="agent-learn" @click.stop="openAgentCapabilities(a.id)">
-                <el-icon :size="12"><InfoFilled /></el-icon>
-                <span>了解</span>
-              </a>
               <el-icon v-if="a.id === chat.currentAgent?.id" class="agent-check"><Check /></el-icon>
             </div>
             <div class="agent-desc" :title="a.description || a.code || ''">{{ a.description || a.code || '暂无介绍' }}</div>
@@ -282,7 +278,6 @@
         <router-view />
       </main>
     </div>
-    <AgentCapabilityDrawer v-model="capDrawerVisible" :agent-id="capDrawerAgentId" />
   </div>
 </template>
 
@@ -290,12 +285,10 @@
 import { ref, onMounted, reactive } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessageBox, ElMessage } from 'element-plus'
-import { InfoFilled } from '@element-plus/icons-vue'
 import { api } from '@/api'
 import { useAuth } from '@/stores/auth'
 import { useChat } from '@/stores/chat'
 import NotificationBell from '@/components/NotificationBell.vue'
-import AgentCapabilityDrawer from '@/components/AgentCapabilityDrawer.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -307,12 +300,6 @@ const subPanel = ref<'history' | 'agent' | null>(null)
 // per-agent capability cache (model + skills + mcps), populated lazily on popover open
 const caps = reactive<Record<number, any>>({})
 const capsLoading = reactive<Record<number, boolean>>({})
-const capDrawerVisible = ref(false)
-const capDrawerAgentId = ref<number | null>(null)
-function openAgentCapabilities(agentId: number) {
-  capDrawerAgentId.value = agentId
-  capDrawerVisible.value = true
-}
 // per-(agent,mcp) tool cache, populated only when user clicks "查看工具"
 const mcpTools = reactive<Record<string, any[]>>({})
 const mcpToolsLoading = reactive<Record<string, boolean>>({})
@@ -646,13 +633,6 @@ async function onChangePassword() {
 .agent-row { display: flex; align-items: center; gap: 6px; }
 .agent-name { font-size: 14px; font-weight: 500; color: var(--m-text); }
 .agent-check { color: var(--m-primary); margin-left: auto; }
-.agent-learn {
-  display: inline-flex; align-items: center; gap: 3px;
-  font-size: 11px; color: var(--m-text-secondary); cursor: pointer;
-  padding: 2px 6px; border-radius: 10px; background: var(--m-bg-soft);
-  transition: background .15s, color .15s;
-}
-.agent-learn:hover { background: var(--m-primary-soft); color: var(--m-primary); }
 .agent-desc {
   margin-top: 4px;
   font-size: 12px; line-height: 1.5;

@@ -199,7 +199,43 @@ async def summarize_mcp(mcp_id: int) -> None:
             data = json.loads(body)
             summary_text = str(data.get("summary") or "").strip()
             if isinstance(data.get("tools"), list):
-                tool_summaries = {"items": data["tools"]}
+                # Merge LLM-generated label/description with the live input_schema
+                # so the runtime can use this as a hot cache (skip real-time MCP
+                # enumeration on each chat request). Without input_schema the
+                # cache is useless to the LLM tool-calling layer.
+                live_by_name = {t.get("name"): t for t in (tools or []) if t.get("name")}
+                enriched: list[dict[str, Any]] = []
+                for it in data["tools"]:
+                    if not isinstance(it, dict):
+                        continue
+                    raw_name = it.get("name")
+                    live = live_by_name.get(raw_name) if raw_name else None
+                    enriched.append({
+                        "name": raw_name,
+                        "label": it.get("label") or raw_name,
+                        # Prefer the LLM-rewritten Chinese description for UI; keep
+                        # the raw English desc separately for the LLM tool call.
+                        "description": it.get("description") or "",
+                        "raw_description": (live or {}).get("description") or "",
+                        "input_schema": (live or {}).get("input_schema") or {"type": "object"},
+                    })
+                # Also include any live tools the LLM forgot to mention, so the
+                # cache covers ALL callable tools (otherwise the chat path will
+                # miss them and fall back to real-time enumeration anyway).
+                seen = {it["name"] for it in enriched if it.get("name")}
+                for t in (tools or []):
+                    if t.get("name") and t["name"] not in seen:
+                        enriched.append({
+                            "name": t["name"],
+                            "label": t["name"],
+                            "description": t.get("description") or "",
+                            "raw_description": t.get("description") or "",
+                            "input_schema": t.get("input_schema") or {"type": "object"},
+                        })
+                tool_summaries = {
+                    "items": enriched,
+                    "cached_at": datetime.now(timezone.utc).isoformat(),
+                }
         except Exception:
             summary_text = raw
         async with SessionLocal() as db:
