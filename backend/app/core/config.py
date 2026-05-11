@@ -4,15 +4,22 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    """All sensitive defaults are empty/placeholder. Real values MUST come from
+    backend/.env (gitignored) or process env. See backend/.env.example for the
+    full list of variables.
+    """
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     DATABASE_URL: str = "postgresql+asyncpg://h3c:h3c@localhost:5432/h3c_agent"
 
-    JWT_SECRET: str = "dev-secret"
+    # MUST be replaced in production via env. 32+ bytes random.
+    JWT_SECRET: str = "change-me-in-production"
     JWT_ALG: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
+    # Fernet key (base64-encoded 32 bytes). If blank, crypto.py derives one
+    # deterministically from JWT_SECRET — fine for dev, NOT for prod.
     ENCRYPTION_KEY: str = ""
 
     STORAGE_ROOT: str = "../storage"
@@ -22,6 +29,7 @@ class Settings(BaseSettings):
 
     CORS_ORIGINS: str = "http://localhost:5173"
 
+    # First-run admin bootstrap; change immediately after first login.
     SEED_ADMIN_USERNAME: str = "admin"
     SEED_ADMIN_PASSWORD: str = "admin123"
 
@@ -34,12 +42,13 @@ class Settings(BaseSettings):
     PARSED_MARKDOWN_HARD_LIMIT: int = 20000
 
     # ---- SMTP (Task notifications) ----
-    SMTP_HOST: str = "smtp.qq.com"
+    # Leave blank to disable email notifications. Configure via .env.
+    SMTP_HOST: str = ""
     SMTP_PORT: int = 587
-    SMTP_USER: str = "309525902@qq.com"
-    SMTP_PASSWORD: str = "tthncqceqgpsbhhj"
-    SMTP_FROM: str = "sunxiaohui <309525902@qq.com>"   # display-name <addr@host>; QQ requires address == SMTP_USER
-    SMTP_USE_TLS: bool = True     # STARTTLS; for SSL on 465 set to False and SMTP_USE_SSL=True
+    SMTP_USER: str = ""
+    SMTP_PASSWORD: str = ""
+    SMTP_FROM: str = ""        # display-name <addr@host>; for QQ the address part must equal SMTP_USER
+    SMTP_USE_TLS: bool = True  # STARTTLS; for SSL on 465 set to False and SMTP_USE_SSL=True
     SMTP_USE_SSL: bool = False
     APP_BASE_URL: str = "http://localhost:5173"  # link target in emails / notifications
 

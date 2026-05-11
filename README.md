@@ -355,6 +355,27 @@ call_logs                            tokens / latency / status
 - [ ] 给关键 Agent 配 `allowed_ext` 白名单
 - [ ] 验证 MinerU 配额 / 切私有化部署
 - [ ] 定期备份 `storage/` 卷 + Postgres
+
+---
+
+## 九、敏感信息安全
+
+**绝不提交到代码库**:
+
+- `backend/.env`(已 gitignored) — 所有真实凭证只放这里
+- `.history/`、`.vscode/`、`.idea/`(已 gitignored) — IDE 本地快照,可能含中间密码
+- 任何含 `*_API_KEY` / `*_PASSWORD` / `*_SECRET` 的真值
+- `.pem` / `.key` 私钥文件
+
+提交前自检:
+
+```bash
+git diff --staged | grep -iE 'password|api[_-]?key|secret|token' | grep -v 'placeholder\|example\|change-me'
+```
+
+如果有真值,**立即**:
+1. 不要 push;`git reset HEAD <file>` 把改动撤回工作区,改成从 `.env` 读
+2. 已 push 的话,先去对应服务平台(QQ 邮箱、各 LLM provider、…) **吊销密码 / 轮换 key**,再考虑 `git filter-repo` 重写历史
 - [ ] 检查日志页(管理端)看是否有 `input_filter_blocked` / `skill.upload_blocked` 异常爆点
 
 ---

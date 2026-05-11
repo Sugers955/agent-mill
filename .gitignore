@@ -1,6 +1,7 @@
 backend/__pycache__/
 backend/**/__pycache__/
 backend/.env
+backend/.env.local
 backend/*.egg-info/
 backend/.venv/
 backend/.pytest_cache/
@@ -8,6 +9,13 @@ backend/.pytest_cache/
 frontend/node_modules/
 frontend/dist/
 frontend/.vite/
+frontend/.env.local
+
+# IDE local-history snapshots (VS Code "Local History" extension).
+# Not meant for version control — they often contain intermediate/secret values.
+.history/
+.vscode/
+.idea/
 
 storage/uploads/*
 !storage/uploads/.gitkeep
@@ -16,3 +24,9 @@ storage/skills/*
 storage/outputs/*
 .DS_Store
 *.log
+
+# Generic secrets safety net
+*.pem
+*.key
+secrets.json
+.secrets/
