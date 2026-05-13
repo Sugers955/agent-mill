@@ -3,34 +3,54 @@ version: "3.9"
 services:
   db:
     image: postgres:16
+    restart: always
     environment:
-      POSTGRES_USER: h3c
-      POSTGRES_PASSWORD: h3c
-      POSTGRES_DB: h3c_agent
-    ports:
-      - "5432:5432"
+      POSTGRES_USER: ${DB_USER:-h3c}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME:-h3c_agent}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-h3c} -d ${DB_NAME:-h3c_agent}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
     volumes:
       - pgdata:/var/lib/postgresql/data
 
   api:
     build:
       context: ./backend
-    depends_on: [db]
+    restart: always
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - ./.env
     environment:
-      DATABASE_URL: postgresql+asyncpg://h3c:h3c@db:5432/h3c_agent
-      CORS_ORIGINS: http://localhost:5173,http://localhost
+      DATABASE_URL: postgresql+asyncpg://${DB_USER:-h3c}:${DB_PASSWORD}@db:5432/${DB_NAME:-h3c_agent}
+      CORS_ORIGINS: "${APP_BASE_URL:-http://localhost},http://localhost"
+      STORAGE_ROOT: /app/storage
+      SKILLS_DIR: /app/storage/skills
+      UPLOADS_DIR: /app/storage/uploads
     ports:
-      - "8000:8000"
+      - "${API_PORT:-8000}:8000"
     volumes:
       - ./storage:/app/storage
-      - ./backend:/app
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/api/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
 
   web:
     build:
       context: ./frontend
+    restart: always
     ports:
-      - "5173:80"
-    depends_on: [api]
+      - "${WEB_PORT:-80}:80"
+    depends_on:
+      - api
 
 volumes:
   pgdata:

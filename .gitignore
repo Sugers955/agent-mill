@@ -1,3 +1,6 @@
+# 根目录部署配置（含真实密码，绝不提交）
+.env
+
 backend/__pycache__/
 backend/**/__pycache__/
 backend/.env

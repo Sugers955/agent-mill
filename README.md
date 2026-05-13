@@ -174,28 +174,76 @@ PDF/DOCX/PPTX/XLSX/PNG/JPG → MinerU(云端/私有化)→ 失败回退本地库
 
 ## 四、快速开始
 
-### 4.1 一键启动 / 停止（推荐日常开发使用）
+> **前置要求**：服务器已安装 [Docker](https://docs.docker.com/engine/install/) + Docker Compose（v2+）。其余依赖均在容器内自动处理。
+
+---
+
+### 4.1 服务器一键部署（推荐）
 
 ```bash
-# 在仓库根目录
-./start.sh        # 启动 backend (8000) + frontend (5173)
-./stop.sh         # 停止所有服务
+# 1. 克隆代码
+git clone <repo-url> h3c-agent
+cd h3c-agent
 
-# 实时查看日志
-tail -f /tmp/agent-forge-backend.log
-tail -f /tmp/agent-forge-frontend.log
+# 2. 生成配置文件
+cp .env.example .env
 ```
 
-`start.sh` 会先 kill 旧进程，再以 `--reload` 模式起后端、`vite dev` 起前端。脚本要求：
-- 后端虚拟环境已建在 `backend/.venv/`
-- 前端 `node_modules` 已 `npm install` 过
+**编辑 `.env`，填写以下必填项**（其余保持默认即可）：
 
-首次跑请先看 4.2 完成依赖安装与建表。
-
-### 4.2 本地开发（首次安装）
+| 字段 | 说明 | 生成命令 |
+|---|---|---|
+| `DB_PASSWORD` | 数据库密码 | 任意强密码 |
+| `JWT_SECRET` | 认证密钥 | `python3 -c "import secrets; print(secrets.token_urlsafe(48))"` |
+| `ENCRYPTION_KEY` | API Key 加密密钥 | `python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` |
+| `APP_BASE_URL` | 服务器访问地址 | 如 `http://192.168.1.100` 或 `https://agent.example.com` |
+| `SEED_ADMIN_PASSWORD` | 初始管理员密码 | 任意强密码 |
+| `MINERU_API_KEY` | 文档解析 Token | 去 [mineru.net](https://mineru.net) 注册申请（可选） |
 
 ```bash
-# 1. PostgreSQL
+# 3. 一键部署（构建镜像 + 启动 + 初始化数据库）
+./deploy.sh
+```
+
+部署完成后会输出访问地址和管理员账号信息。**首次登录后立即修改管理员密码。**
+
+---
+
+### 4.2 日常运维命令
+
+```bash
+# 查看所有服务运行状态
+./deploy.sh --status
+
+# 实时查看日志（Ctrl+C 退出）
+./deploy.sh --logs
+
+# 更新部署（拉新代码后重新构建）
+git pull && ./deploy.sh --update
+
+# 强制重建所有镜像（清除缓存）
+./deploy.sh --rebuild
+
+# 停止服务（保留数据库卷）
+./deploy.sh --down
+```
+
+也可以直接使用 docker compose 命令：
+
+```bash
+docker compose ps                          # 查看状态
+docker compose logs -f api                 # 只看后端日志
+docker compose logs -f web                 # 只看前端日志
+docker compose exec api python -m app.db.init_db   # 手动重跑数据库迁移
+docker compose restart api                 # 重启后端
+```
+
+---
+
+### 4.3 本地开发（无 Docker）
+
+```bash
+# 1. 启动 PostgreSQL（用 Docker 快速拉起）
 docker run -d --name h3c-pg -p 5432:5432 \
   -e POSTGRES_USER=h3c -e POSTGRES_PASSWORD=h3c -e POSTGRES_DB=h3c_agent \
   postgres:16
@@ -203,52 +251,67 @@ docker run -d --name h3c-pg -p 5432:5432 \
 # 2. 后端
 cd backend
 python -m venv .venv && source .venv/bin/activate
-cp .env.example .env
-# 编辑 .env 填入:
-#   - JWT_SECRET / ENCRYPTION_KEY (任意 base64 32 字节)
-#   - MINERU_API_KEY (mineru.net 申请)
+cp .env.example .env          # 编辑 .env 填入 JWT_SECRET / ENCRYPTION_KEY / MINERU_API_KEY
 pip install -e .
-python -m app.db.init_db          # 建表 + 默认 admin / admin123
-uvicorn app.main:app --reload --port 8000
+python -m app.db.init_db      # 建表 + 创建默认 admin
 
 # 3. 前端
 cd ../frontend
 npm install
-npm run dev                        # http://localhost:5173
+
+# 4. 一键启动（两个进程）
+cd ..
+./start.sh        # backend :8000 + frontend :5173
+./stop.sh         # 停止
+
+# 实时日志
+tail -f /tmp/agent-forge-backend.log
+tail -f /tmp/agent-forge-frontend.log
 ```
 
-### 4.3 Docker Compose
+---
+
+### 4.4 完整 `.env` 配置说明
 
 ```bash
-docker-compose up -d --build
-docker-compose exec api python -m app.db.init_db
-```
+# ── 数据库 ─────────────────────────────────────────────
+DB_PASSWORD=<强密码>           # docker-compose 创建 postgres 用
+DB_USER=h3c                    # 默认即可
+DB_NAME=h3c_agent              # 默认即可
 
-### 4.4 关键 env
+# ── 端口 ───────────────────────────────────────────────
+WEB_PORT=80                    # 前端对外端口
+API_PORT=8000                  # 后端对外端口（可不暴露，走 nginx 代理）
 
-```bash
-# 数据库
-DATABASE_URL=postgresql+asyncpg://h3c:h3c@localhost:5432/h3c_agent
+# ── 访问地址 ────────────────────────────────────────────
+APP_BASE_URL=http://your-ip    # CORS 白名单 + 邮件回链
 
-# 鉴权
-JWT_SECRET=<32+ 字节随机>
-ENCRYPTION_KEY=<Fernet 32 字节>
+# ── 鉴权 ───────────────────────────────────────────────
+JWT_SECRET=<48字节随机>
+ENCRYPTION_KEY=<Fernet 32字节>
+ACCESS_TOKEN_EXPIRE_MINUTES=720
+REFRESH_TOKEN_EXPIRE_DAYS=2
 
-# MinerU(云端)
-MINERU_MODE=cloud                  # cloud | local | disabled
+# ── 初始管理员 ──────────────────────────────────────────
+SEED_ADMIN_USERNAME=admin
+SEED_ADMIN_PASSWORD=<强密码>
+
+# ── MinerU 文档解析 ─────────────────────────────────────
+MINERU_MODE=cloud              # cloud | local | disabled
 MINERU_BASE_URL=https://mineru.net
 MINERU_API_KEY=<token>
-MINERU_TIMEOUT_SEC=60
+# 私有化部署只需改这三个 env，业务代码零侵入:
+#   MINERU_MODE=local
+#   MINERU_BASE_URL=http://10.0.0.50:8000
+#   MINERU_API_KEY=（通常不需要）
 
-# MinerU(私有化,后期切换)
-MINERU_MODE=local
-MINERU_BASE_URL=http://10.0.0.50:8000
-MINERU_API_KEY=                    # 私有化通常不需要
-
-# 文件
-MAX_UPLOAD_MB=50
-# 文件解析头限制，只解析前PARSED_MARKDOWN_HARD_LIMIT内容PARSED_MARKDOWN_HARD_LIMIT characters (head 60% + " (中间 X 字省略) " + tail 40%).
-PARSED_MARKDOWN_HARD_LIMIT=20000
+# ── SMTP 邮件通知（可选，留空禁用）────────────────────
+SMTP_HOST=smtp.qq.com
+SMTP_PORT=587
+SMTP_USER=xxx@qq.com
+SMTP_PASSWORD=<QQ授权码>       # QQ 邮箱设置 → IMAP/SMTP → 生成授权码
+SMTP_FROM=显示名 <xxx@qq.com>
+SMTP_USE_TLS=true
 ```
 
 ---
