@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_
 from ...db.session import get_db
 from ...db.models import User, Role, Department
-from ...deps import require_admin
+from ...deps import require_admin, require_admin_or_operator
 from ...core.security import hash_password
 from ...schemas import (
     UserOut, UserCreate, UserUpdate, UserPage,
@@ -20,7 +20,9 @@ PROTECTED_ROLE_CODES = {"admin", "operator", "user"}
 
 
 @router.get("/roles", response_model=list[RoleOut])
-async def list_roles(db: AsyncSession = Depends(get_db), _=Depends(require_admin)):
+async def list_roles(db: AsyncSession = Depends(get_db), _=Depends(require_admin_or_operator)):
+    # Read-only role list — operators need it to fill the "可见角色" dropdown
+    # in the agent edit form. Create/update/delete still admin-only.
     rows = (await db.execute(select(Role).order_by(Role.id))).scalars().all()
     return rows
 
@@ -75,8 +77,10 @@ async def list_users(
     department_id: int | None = Query(None),
     limit: int = Query(20, ge=1, le=200),
     offset: int = Query(0, ge=0),
-    db: AsyncSession = Depends(get_db), _=Depends(require_admin),
+    db: AsyncSession = Depends(get_db), _=Depends(require_admin_or_operator),
 ):
+    # Read-only user list — operators need it to fill the "按用户筛选" dropdown
+    # on the logs page. Create/update/delete still admin-only.
     filters = []
     if q:
         like = f"%{q.strip()}%"

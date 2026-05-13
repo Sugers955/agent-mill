@@ -63,6 +63,7 @@
         <el-form-item label="描述">
           <el-input v-model="form.description" type="textarea" :rows="2" placeholder="可选" />
         </el-form-item>
+         <el-divider><span class="section-title">执行</span></el-divider>
         <el-form-item label="智能体">
           <el-select v-model="form.agent_id" filterable style="width:100%">
             <el-option v-for="a in agents" :key="a.id" :label="a.name" :value="a.id" />

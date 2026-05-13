@@ -6,6 +6,7 @@ const routes = [
   { path: '/chat', component: () => import('./views/Chat.vue') },
   { path: '/tasks', component: () => import('./views/Tasks.vue') },
   { path: '/tasks/:id', component: () => import('./views/TaskDetail.vue') },
+  { path: '/space', component: () => import('./views/Space.vue') },
   { path: '/notifications', component: () => import('./views/Notifications.vue') },
   { path: '/me', component: () => import('./views/Me.vue') },
   { path: '/:pathMatch(.*)*', redirect: '/chat' },

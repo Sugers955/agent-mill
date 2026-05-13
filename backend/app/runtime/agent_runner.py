@@ -1345,14 +1345,22 @@ class AgentRunner:
         "glm": "https://open.bigmodel.cn/api/paas/v4",
     }
 
-    @staticmethod
-    def _render_attachments(files: list[dict[str, Any]]) -> str:
+    def _render_attachments(self, files: list[dict[str, Any]]) -> str:
         """Render uploaded files as a structured attachment block for the model.
 
-        Includes the parsed markdown when available, otherwise a status note.
+        Per-Agent length cap:
+          * agent.parsed_content_limit  — explicit override (None = use global)
+          * settings.PARSED_MARKDOWN_HARD_LIMIT — global default
+          * limit == 0  → no truncation (inject full markdown verbatim)
         """
         if not files:
             return ""
+        from ..core.config import settings as _settings
+        limit_override = getattr(self.ctx.agent, "parsed_content_limit", None)
+        if limit_override is None:
+            cap = int(_settings.PARSED_MARKDOWN_HARD_LIMIT or 0)
+        else:
+            cap = int(limit_override)
         sections: list[str] = []
         for f in files:
             name = f.get("name") or "file"
@@ -1363,7 +1371,11 @@ class AgentRunner:
             if chars:
                 head += f"  · {chars} 字符"
             if status == "done" and md:
-                sections.append(f"{head}\n\n```\n{md}\n```")
+                from ..services.file_parser import clip_for_prompt as _clip
+                body_md = _clip(md, cap)
+                if cap > 0 and chars > cap:
+                    head += f" (按 Agent 配置截取至 {cap} 字符)"
+                sections.append(f"{head}\n\n```\n{body_md}\n```")
             elif status == "parsing":
                 sections.append(f"{head}\n\n(文件正在解析中,本轮无法读取内容)")
             elif status == "failed":

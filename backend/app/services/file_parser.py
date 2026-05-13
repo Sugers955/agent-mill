@@ -6,8 +6,9 @@ Routing:
   fall back to local libraries on failure or when MinerU is disabled.
 
 Result: writes parsed_markdown / parsed_chars / parse_status / parse_engine /
-parse_error / parsed_at on the UploadedFile row. Hard-truncates to
-PARSED_MARKDOWN_HARD_LIMIT characters (head 60% + " (中间 X 字省略) " + tail 40%).
+parse_error / parsed_at on the UploadedFile row. Stores the FULL parsed text;
+per-Agent length limits are applied at injection time in agent_runner so the
+same file can be sent in full to one Agent and clipped for another.
 """
 from __future__ import annotations
 import asyncio
@@ -35,7 +36,8 @@ MINERU_EXTS = {".pdf", ".docx", ".doc", ".pptx", ".ppt", ".xlsx", ".xls",
 
 
 def _truncate(text: str, hard_limit: int) -> str:
-    if len(text) <= hard_limit:
+    """Head 60% + omission marker + tail 40%. hard_limit<=0 disables truncation."""
+    if hard_limit <= 0 or len(text) <= hard_limit:
         return text
     head_n = int(hard_limit * 0.6)
     tail_n = hard_limit - head_n - 64
@@ -43,6 +45,10 @@ def _truncate(text: str, hard_limit: int) -> str:
     head = text[:head_n]
     tail = text[-tail_n:] if tail_n > 0 else ""
     return f"{head}\n\n... (中间 {omitted} 字符省略) ...\n\n{tail}"
+
+
+# Public alias used by agent_runner at prompt-injection time.
+clip_for_prompt = _truncate
 
 
 # ---------- Text & local fallbacks (no external service) ----------
@@ -171,14 +177,14 @@ async def parse_uploaded_file(file_id: int) -> None:
             elif err is None:
                 err = f"unsupported extension: {ext}"
 
-    # Persist result
+    # Persist result. Full parsed text is stored — per-turn truncation (if any)
+    # happens at injection time in agent_runner, honoring the Agent's own
+    # `parsed_content_limit` override when set.
     async with SessionLocal() as db:
         row = (await db.execute(select(UploadedFile).where(UploadedFile.id == file_id))).scalar_one()
         if parsed is not None:
-            limit = settings.PARSED_MARKDOWN_HARD_LIMIT
-            truncated = _truncate(parsed, limit)
-            row.parsed_markdown = truncated
-            row.parsed_chars = len(truncated)
+            row.parsed_markdown = parsed
+            row.parsed_chars = len(parsed)
             row.parse_status = "done"
             row.parse_engine = engine
             row.parse_error = None

@@ -170,6 +170,10 @@
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
           <span>任务</span>
         </button>
+        <button class="nav-item" @click="goRoute('/space')">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+          <span>空间</span>
+        </button>
         <button class="nav-item" @click="goRoute('/notifications')">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
           <span>通知</span>
@@ -450,12 +454,44 @@ function formatSize(n: number) {
 }
 
 function normalizeTrace(trace: any[] | undefined) {
-  if (!trace) return []
-  return trace.map((t) => ({
-    kind: t.type === 'tool_use' ? 'tool' : 'tool_result',
-    name: t.data?.name || '',
-    status: 'done',
-  }))
+  if (!Array.isArray(trace) || !trace.length) return []
+  const steps: any[] = []
+  const stepIndex: Record<string, number> = {}
+
+  for (const t of trace) {
+    const data = t?.data || {}
+    if (t?.type === 'tool_use') {
+      const id = String(data.id || data.name || `tool-${steps.length}`)
+      const existingIdx = stepIndex[id]
+      if (existingIdx != null) {
+        const s = steps[existingIdx]
+        if (data.input && (typeof data.input !== 'object' || Object.keys(data.input).length)) {
+          s.input = data.input
+        }
+        continue
+      }
+      stepIndex[id] = steps.length
+      steps.push({
+        kind: data.name?.startsWith('mcp_') ? 'mcp' : 'tool',
+        name: data.name || '(tool)',
+        input: data.input,
+        output: undefined,
+        status: 'done',
+      })
+      continue
+    }
+    if (t?.type === 'tool_result') {
+      const id = data.tool_use_id != null ? String(data.tool_use_id) : ''
+      let idx = id ? stepIndex[id] : undefined
+      if (idx == null) idx = steps.length - 1
+      const s = steps[idx]
+      if (s) {
+        s.output = data.content
+      }
+    }
+  }
+
+  return steps
 }
 
 function isWaiting(m: any): boolean {

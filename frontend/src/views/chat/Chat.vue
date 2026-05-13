@@ -494,14 +494,43 @@ function onWidgetSendMessage(text: string) {
 }
 
 function normalizeTrace(trace: any[] | undefined) {
-  if (!trace) return []
-  return trace.map((t) => ({
-    kind: t.type === 'tool_use' ? 'tool' : 'tool_result',
-    name: t.data?.name || '',
-    input: t.data?.input,
-    output: t.data?.content,
-    status: 'done',
-  }))
+  if (!Array.isArray(trace) || !trace.length) return []
+  const steps: any[] = []
+  const stepIndex: Record<string, number> = {}
+
+  for (const t of trace) {
+    const data = t?.data || {}
+    if (t?.type === 'tool_use') {
+      const id = String(data.id || data.name || `tool-${steps.length}`)
+      const existingIdx = stepIndex[id]
+      if (existingIdx != null) {
+        const s = steps[existingIdx]
+        if (data.input && (typeof data.input !== 'object' || Object.keys(data.input).length)) {
+          s.input = data.input
+        }
+        continue
+      }
+      stepIndex[id] = steps.length
+      steps.push({
+        kind: data.name?.startsWith('mcp_') ? 'mcp' : 'tool',
+        name: data.name || '(tool)',
+        input: data.input,
+        status: 'done',
+      })
+      continue
+    }
+    if (t?.type === 'tool_result') {
+      const id = data.tool_use_id != null ? String(data.tool_use_id) : ''
+      let idx = id ? stepIndex[id] : undefined
+      if (idx == null) idx = steps.length - 1
+      const s = steps[idx]
+      if (s) {
+        s.output = data.content
+      }
+    }
+  }
+
+  return steps
 }
 
 function formatStepData(v: any) {

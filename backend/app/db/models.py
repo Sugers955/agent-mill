@@ -100,6 +100,11 @@ class Agent(Base, TimestampMixin):
     upload_policy_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     max_turns: Mapped[int] = mapped_column(Integer, default=15, server_default="15")
     effort: Mapped[str] = mapped_column(String(16), default="low", server_default="low")
+    # File-parsing length cap fed into the model:
+    #   None → use settings.PARSED_MARKDOWN_HARD_LIMIT
+    #   0    → no cap (inject the full parsed markdown)
+    #   >0   → cap to this many characters (head 60% + tail 40% with omission marker)
+    parsed_content_limit: Mapped[int | None] = mapped_column(Integer)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     is_default: Mapped[bool] = mapped_column(Boolean, default=False)
 

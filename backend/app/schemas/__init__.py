@@ -201,6 +201,7 @@ class AgentIn(BaseModel):
     upload_policy_json: dict[str, Any] = Field(default_factory=dict)
     max_turns: int = Field(default=15, ge=1, le=100)
     effort: EffortLevel = "medium"
+    parsed_content_limit: int | None = Field(default=None, ge=0, le=2_000_000)
     enabled: bool = True
     is_default: bool = False
     skill_ids: list[int] = Field(default_factory=list)
@@ -221,6 +222,7 @@ class AgentOut(ORM):
     upload_policy_json: dict[str, Any]
     max_turns: int = 15
     effort: EffortLevel = "medium"
+    parsed_content_limit: int | None = None
     enabled: bool
     is_default: bool = False
     skill_ids: list[int] = []

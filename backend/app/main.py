@@ -38,6 +38,8 @@ async def _auto_migrate() -> None:
             "ALTER TABLE mcp_connectors ADD COLUMN IF NOT EXISTS user_summary_updated_at TIMESTAMP WITH TIME ZONE",
             # favorites: snapshot of generated files attached to the answer
             "ALTER TABLE favorites ADD COLUMN IF NOT EXISTS files_json JSON",
+            # agents: per-agent parsed-content cap. NULL = use global default.
+            "ALTER TABLE agents ADD COLUMN IF NOT EXISTS parsed_content_limit INTEGER",
         ]:
             try:
                 await conn.exec_driver_sql(stmt)

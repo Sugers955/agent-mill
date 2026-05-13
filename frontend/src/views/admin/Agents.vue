@@ -58,9 +58,9 @@
             </button>
           </div>
         </el-form-item>
-        <el-form-item label="System Prompt">
+        <el-form-item label="Agent Prompt">
           <div class="polish-wrap">
-            <el-input v-model="form.system_prompt" type="textarea" :rows="6"
+            <el-input v-model="form.system_prompt" type="textarea" :rows="4"
                       placeholder="给智能体的系统提示词；可点击右下角的「✨ AI 润色」让 AI 帮你结构化" />
             <button type="button" class="polish-btn"
                     :disabled="polishing.system_prompt"
@@ -93,6 +93,7 @@
             <el-option label="max — 最大推理深度,多步骤问题" value="max" />
           </el-select>
         </el-form-item>
+        <el-divider style="margin:20px 0 12px"><span style="font-size:12px;color:var(--m-text-secondary)">工具使用策略</span></el-divider>
         <el-form-item label="挂载 Skills">
           <el-select v-model="form.skill_ids" multiple style="width:100%">
             <el-option v-for="s in skills" :key="s.id" :label="`${s.code} (${s.type})`" :value="s.id" />
@@ -113,7 +114,7 @@
             <el-option v-for="r in roles" :key="r.id" :label="r.name" :value="r.id" />
           </el-select>
         </el-form-item>
-        <el-divider style="margin:16px 0 8px"><span style="font-size:12px;color:var(--m-text-secondary)">文件上传策略</span></el-divider>
+        <el-divider style="margin:20px 0 12px"><span style="font-size:12px;color:var(--m-text-secondary)">文件上传策略</span></el-divider>
         <el-form-item label="允许扩展名">
           <el-input v-model="extText" placeholder="逗号分隔,如: pdf,docx,png. 留空=不限" />
         </el-form-item>
@@ -124,6 +125,20 @@
         <el-form-item label="单次发送上限">
           <el-input-number v-model="maxFilesPerSend" :min="0" :max="50" :step="1" controls-position="right" />
           <span style="margin-left:8px;font-size:12px;color:var(--m-text-secondary)">个 · 一次发送最多带几个文件,0 表示不限</span>
+        </el-form-item>
+        <el-form-item label="文件解析长度">
+          <el-input-number
+            v-model="form.parsed_content_limit"
+            :min="0"
+            :max="2000000"
+            :step="5000"
+            controls-position="right"
+            placeholder="留空 = 全局默认"
+            style="width:220px"
+          />
+          <span style="margin-left:8px;font-size:12px;color:var(--m-text-secondary)">
+            字符 · 留空使用全局默认(20000),<b>0 表示不截断</b>(全文喂模型,谨慎)
+          </span>
         </el-form-item>
         <el-form-item label="设为默认">
           <el-switch v-model="form.is_default" />
@@ -185,6 +200,7 @@ function emptyForm() {
     code: '', name: '', description: '', icon: '', system_prompt: '',
     default_model_id: null, fallback_model_id: null,
     upload_policy_json: {}, max_turns: 15, effort: 'low',
+    parsed_content_limit: null,
     enabled: true, is_default: false,
     skill_ids: [], mcp_ids: [], pack_ids: [], role_ids: [],
   }

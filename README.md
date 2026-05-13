@@ -247,6 +247,7 @@ MINERU_API_KEY=                    # 私有化通常不需要
 
 # 文件
 MAX_UPLOAD_MB=50
+# 文件解析头限制，只解析前PARSED_MARKDOWN_HARD_LIMIT内容PARSED_MARKDOWN_HARD_LIMIT characters (head 60% + " (中间 X 字省略) " + tail 40%).
 PARSED_MARKDOWN_HARD_LIMIT=20000
 ```
 

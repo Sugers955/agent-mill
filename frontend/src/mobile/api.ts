@@ -127,4 +127,19 @@ export const api = {
   getFile: (id: number) => get(`/api/files/${id}`),
   reparseFile: (id: number) => post(`/api/files/${id}/reparse`),
   deleteFile: (id: number) => del(`/api/files/${id}`),
+
+  // favorites (Space)
+  favorites: (params: { q?: string; agent_id?: number; limit?: number; offset?: number } = {}) => {
+    const qs = new URLSearchParams()
+    if (params.q) qs.set('q', params.q)
+    if (params.agent_id != null) qs.set('agent_id', String(params.agent_id))
+    qs.set('limit', String(params.limit ?? 20))
+    qs.set('offset', String(params.offset ?? 0))
+    return get(`/api/favorites?${qs.toString()}`)
+  },
+  deleteFavorite: (id: number) => del(`/api/favorites/${id}`),
+  refreshDownload: (output_path: string) => {
+    const qs = new URLSearchParams({ output_path })
+    return post(`/api/downloads/refresh?${qs.toString()}`)
+  },
 }
