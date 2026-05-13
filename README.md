@@ -251,7 +251,7 @@ docker run -d --name h3c-pg -p 5432:5432 \
 # 2. 后端
 cd backend
 python -m venv .venv && source .venv/bin/activate
-cp .env.example .env          # 编辑 .env 填入 JWT_SECRET / ENCRYPTION_KEY / MINERU_API_KEY
+cp backend/.env.example backend/.env   # 编辑 backend/.env 填入 JWT_SECRET / ENCRYPTION_KEY / MINERU_API_KEY
 pip install -e .
 python -m app.db.init_db      # 建表 + 创建默认 admin
 
@@ -273,24 +273,40 @@ tail -f /tmp/agent-forge-frontend.log
 
 ### 4.4 完整 `.env` 配置说明
 
-```bash
-# ── 数据库 ─────────────────────────────────────────────
-DB_PASSWORD=<强密码>           # docker-compose 创建 postgres 用
-DB_USER=h3c                    # 默认即可
-DB_NAME=h3c_agent              # 默认即可
+> `.env.example` 包含所有字段及注释，以下为关键项速查。
 
-# ── 端口 ───────────────────────────────────────────────
-WEB_PORT=80                    # 前端对外端口
-API_PORT=8000                  # 后端对外端口（可不暴露，走 nginx 代理）
+```bash
+# ── Docker Compose 专属 ────────────────────────────────
+DB_USER=h3c                          # 数据库用户名（默认即可）
+DB_PASSWORD=<强密码>                  # 数据库密码（与 DATABASE_URL 保持一致）
+DB_NAME=h3c_agent                    # 数据库名（默认即可）
+WEB_PORT=80                          # 前端对外端口
+API_PORT=8000                        # 后端对外端口
+
+# ── 数据库连接 ─────────────────────────────────────────
+# Docker 部署时由 docker-compose.yml 自动覆盖为容器内地址，无需手动改
+DATABASE_URL=postgresql+asyncpg://h3c:<DB_PASSWORD>@localhost:5432/h3c_agent
 
 # ── 访问地址 ────────────────────────────────────────────
-APP_BASE_URL=http://your-ip    # CORS 白名单 + 邮件回链
+APP_BASE_URL=http://your-server-ip   # CORS 白名单 + 邮件回链
 
 # ── 鉴权 ───────────────────────────────────────────────
-JWT_SECRET=<48字节随机>
-ENCRYPTION_KEY=<Fernet 32字节>
+JWT_SECRET=<48字节随机串>             # python3 -c "import secrets; print(secrets.token_urlsafe(48))"
+JWT_ALG=HS256
 ACCESS_TOKEN_EXPIRE_MINUTES=720
 REFRESH_TOKEN_EXPIRE_DAYS=2
+ENCRYPTION_KEY=<Fernet 32字节>       # python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+
+# ── 文件存储 ────────────────────────────────────────────
+# Docker 部署时由 docker-compose.yml 自动覆盖为容器内路径
+STORAGE_ROOT=../storage
+SKILLS_DIR=../storage/skills
+UPLOADS_DIR=../storage/uploads
+MAX_UPLOAD_MB=50
+
+# ── CORS ────────────────────────────────────────────────
+# Docker 部署时由 docker-compose.yml 自动根据 APP_BASE_URL 覆盖
+CORS_ORIGINS=http://localhost:5173
 
 # ── 初始管理员 ──────────────────────────────────────────
 SEED_ADMIN_USERNAME=admin
@@ -299,19 +315,22 @@ SEED_ADMIN_PASSWORD=<强密码>
 # ── MinerU 文档解析 ─────────────────────────────────────
 MINERU_MODE=cloud              # cloud | local | disabled
 MINERU_BASE_URL=https://mineru.net
-MINERU_API_KEY=<token>
-# 私有化部署只需改这三个 env，业务代码零侵入:
+MINERU_API_KEY=<token>         # mineru.net 注册后申请
+MINERU_TIMEOUT_SEC=60
+PARSED_MARKDOWN_HARD_LIMIT=20000
+# 私有化部署只需改以下三项，业务代码零侵入:
 #   MINERU_MODE=local
 #   MINERU_BASE_URL=http://10.0.0.50:8000
 #   MINERU_API_KEY=（通常不需要）
 
-# ── SMTP 邮件通知（可选，留空禁用）────────────────────
+# ── SMTP 邮件通知（可选，全部留空则禁用）──────────────
 SMTP_HOST=smtp.qq.com
 SMTP_PORT=587
 SMTP_USER=xxx@qq.com
-SMTP_PASSWORD=<QQ授权码>       # QQ 邮箱设置 → IMAP/SMTP → 生成授权码
-SMTP_FROM=显示名 <xxx@qq.com>
+SMTP_PASSWORD=<QQ授权码>       # QQ 邮箱设置 → IMAP/SMTP → 生成授权码（不是登录密码）
+SMTP_FROM=显示名 <xxx@qq.com>  # QQ 要求邮箱部分必须等于 SMTP_USER
 SMTP_USE_TLS=true
+SMTP_USE_SSL=false
 ```
 
 ---
