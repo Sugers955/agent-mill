@@ -57,6 +57,25 @@ export function buildReceiverSrcdoc(styleBlock: string): string {
   const receiverScript = `(function(){
 var root=document.getElementById('__root');
 var _t=null,_first=true,_lastH=0,_streaming=false;
+
+// During streaming, set SVG height from its viewBox so the element
+// occupies the correct space and ResizeObserver can measure it.
+function setSvgStreamHeight(){
+  var svg=root.querySelector('svg');
+  if(!svg)return;
+  var vb=svg.getAttribute('viewBox');
+  if(!vb)return;
+  var parts=vb.trim().split(/\s+|,/);
+  if(parts.length<4)return;
+  var vbW=parseFloat(parts[2]);
+  var vbH=parseFloat(parts[3]);
+  if(vbW>0&&vbH>0){
+    // Rendered width tracks container; derive height from aspect ratio.
+    var renderedW=root.getBoundingClientRect().width||document.documentElement.clientWidth||680;
+    var h=Math.ceil(vbH*(renderedW/vbW));
+    svg.style.height=h+'px';
+  }
+}
 function _measure(){
   var r=root.getBoundingClientRect();
   var h=Math.ceil(r.height);
@@ -105,6 +124,7 @@ function setStreaming(on){
 function applyHtml(html){
   if(root.innerHTML===html)return;
   root.innerHTML=html;
+  setSvgStreamHeight();
   _h();
 }
 
@@ -122,6 +142,9 @@ function finalizeHtml(html){
     ss[i].remove();
   }
   root.innerHTML=tmp.innerHTML;
+  // Remove the streaming inline height so SVG renders at natural size.
+  var svg=root.querySelector('svg');
+  if(svg)svg.style.height='';
   var cdn=scripts.filter(function(s){return !!s.src});
   var inline=scripts.filter(function(s){return !s.src&&s.text});
   function _appendInline(){
@@ -209,15 +232,16 @@ html, body { height: auto; }
 #__root { width: 100%; height: fit-content; background: transparent; }
 
 /* While streaming, force every direct child of #__root to fill the available
-   width. We do NOT force a height — that lets the iframe naturally grow as
-   the SVG/HTML content gets longer (ResizeObserver reports the true height). */
+   width. Set SVG height from its own viewBox so it never collapses while
+   content is still arriving. */
 body.is-streaming #__root { min-height: 100%; }
 body.is-streaming #__root > svg {
   width: 100% !important;
-  height: auto !important;
   display: block;
   max-width: 100%;
 }
+/* height: auto alone can collapse mid-stream; viewBox-based height is set
+   inline by the receiver script via setSvgStreamHeight() below. */
 body.is-streaming #__root > div,
 body.is-streaming #__root > section,
 body.is-streaming #__root > article,

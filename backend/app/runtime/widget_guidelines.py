@@ -5,7 +5,7 @@ from typing import Any
 WIDGET_SYSTEM_PROMPT = """<widget-capability>
 You can create interactive visualizations using the `show-widget` code fence.
 
-CRITICAL RULE: Always use show-widget fence — never write files, never output raw SVG.
+CRITICAL RULE: Always use show-widget fence -- never write files, never output raw SVG.
 
 ```show-widget
 {"title":"human-readable title","widget_code":"<svg width=\\"100%\\" viewBox=\\"0 0 W H\\">...</svg>"}
@@ -13,44 +13,76 @@ CRITICAL RULE: Always use show-widget fence — never write files, never output 
 
 widget_code is a JSON string: escape every quote as \\", every newline as \\n. No DOCTYPE/html/head/body.
 
-LAYOUT PLANNING — do these mentally BEFORE writing any SVG element:
-1. Measure every label (CJK 1.8x, Latin 1x). Wrap at 13 CJK / 18 Latin chars per line.
-2. node_w = max(120, min(260, longest_line_chars * 8 + 48)); node_h = 48 + (extra_lines * 20)
-3. Grid layout: top-bottom flow uses x_center = 40 + col_i * (max_node_w + 60); y_top = 40 + row_j * (max_node_h + 50)
-4. viewBox W = rightmost_right_edge + 40 (min 500); H = bottommost_bottom_edge + 48 (min 300)
-5. Draw order: <defs> first → background rect → node rects → text → arrows last
+LAYOUT PLANNING (mandatory -- complete ALL steps mentally before writing SVG):
 
-VISUAL QUALITY — Google-Material light theme:
+STEP 1 -- Measure every label precisely:
+  CJK character width = 14px, Latin/digit = 8px, space = 4px
+  line_w = sum of char widths in that line
+  Wrap rule: start a new line when line_w > 200px (prefer wrapping at word/punctuation boundaries)
+  lines_count = number of wrapped lines for this label
+
+STEP 2 -- Calculate each node's bounding box:
+  node_w = max(120, min(280, widest_line_w + 56))   [56 = 28px padding each side]
+  node_h = 44 + (lines_count - 1) * 22              [44 for first line; 22 per extra line]
+  Write down every node's (x, y, w, h) before drawing anything.
+
+STEP 3 -- Place nodes with guaranteed clearance:
+  Horizontal gap between siblings  = max(60, 0.5 * max_node_w_in_row)
+  Vertical gap between rows        = max(56, 0.4 * max_node_h_in_column)
+  col_x[i] = margin_left + sum(node_w[0..i-1]) + i * h_gap   [margin_left = 40]
+  row_y[j] = margin_top  + sum(node_h[0..j-1]) + j * v_gap   [margin_top  = 48]
+  Node center: cx = col_x[i] + node_w/2,  cy = row_y[j] + node_h/2
+
+STEP 4 -- Compute viewBox dimensions (NEVER guess):
+  canvas_w = col_x[last_col] + node_w[last_col] + 40    (min 520)
+  canvas_h = row_y[last_row] + node_h[last_row] + 56    (min 300)
+  Write: viewBox="0 0 {canvas_w} {canvas_h}"
+
+STEP 5 -- Compute arrow endpoints precisely (avoid piercing nodes):
+  Top->Bottom : x1=src_cx, y1=src_y+src_h,       x2=dst_cx, y2=dst_y
+  Bottom->Top : x1=src_cx, y1=src_y,             x2=dst_cx, y2=dst_y+dst_h
+  Left->Right : x1=src_x+src_w, y1=src_cy,       x2=dst_x,  y2=dst_cy
+  Right->Left : x1=src_x,       y1=src_cy,       x2=dst_x+dst_w, y2=dst_cy
+  Non-aligned elbow: M x1 y1 L x1 mid_y L x2 mid_y L x2 y2  (mid_y=(y1+y2)/2)
+  Shorten each end by 2px from the node edge to leave a clean gap.
+
+STEP 6 -- Draw order (strict):
+  <defs> -> background <rect> -> node <rect>s -> node <text>s -> arrows last
+
+VISUAL QUALITY -- Google-Material light theme:
 - Primary: fill #e8f0fe / stroke #aecbfa / accent #1a73e8
 - Success: fill #e6f4ea / stroke #a8dab5 / accent #1e8e3e
 - Warning: fill #fef7e0 / stroke #feefc3 / accent #f29900
 - Neutral: fill #f8f9fa / stroke #dadce0 / accent #5f6368
 - Error:   fill #fce8e6 / stroke #f6aea9 / accent #d93025
-- Background: ALWAYS fill="#ffffff" or fill="#fafbfc" — never dark.
+- Background: ALWAYS fill="#ffffff" or fill="#fafbfc" -- never dark.
 
-Typography: title 15px #202124, label 13px #3c4043, caption 11px #5f6368. NEVER below 11px. NEVER bold (700).
+Typography: title 15px #202124, label 13px #3c4043, caption 11px #5f6368.
+  NEVER below 11px. NEVER font-weight 700 (bold).
+  Multi-line text: dominant-baseline="middle", first line at cy-(lines-1)*11, each next +22px
 
 HTML vs SVG decision:
-- Calculator/form/inputs/tabs → HTML (needs click + state)
-- Flowchart/sequence/timeline/architecture/hierarchy → SVG (drawing connections)
+- Calculator/form/inputs/tabs -> HTML (needs click + state)
+- Flowchart/sequence/timeline/architecture/hierarchy -> SVG (drawing connections)
 
 FORBIDDEN:
-- Text positioned without measuring node width first → overflow
-- Arrows drawn through other nodes
+- Writing coordinates before completing steps 1-4
+- Arrows that pass through or overlap other nodes
+- canvas_h smaller than actual content bottom (always re-verify)
 - font-size below 11px
 - Raw <svg> output without the show-widget fence
 - Dark backgrounds, neon colors, gradients on node fills
 
-Required rules (always apply):
-1. widget_code is a JSON string — escape quotes/newlines; no DOCTYPE/html/head/body
+Required rules:
+1. widget_code is a JSON string -- escape quotes/newlines; no DOCTYPE/html/body
 2. Light theme: bg #ffffff/#fafbfc; never dark
-3. Each widget ≤ 4000 chars. Always close JSON + fence on its own line
-4. Streaming order: <defs> → rects → text → arrows
+3. Each widget <= 4000 chars. Always close JSON + fence on its own line
+4. Draw order: <defs> -> rects -> text -> arrows
 5. CDN allowlist: cdnjs.cloudflare.com, cdn.jsdelivr.net, unpkg.com, esm.sh
 6. CDN scripts: onload="init()" + if(window.Lib) init(); fallback
 7. Text explanations OUTSIDE the code fence
 8. Multi-widget: each in a separate fence
-9. SVG: <svg width="100%" viewBox="0 0 680 H">, ALWAYS first child <rect width="100%" height="100%" fill="#ffffff"/>
+9. SVG: <svg width="100%" viewBox="0 0 {canvas_w} {canvas_h}">, ALWAYS first child <rect width="100%" height="100%" fill="#ffffff"/>
 10. Title: human-readable in user's language
 
 Call `load_widget_guidelines` for extended specs (interactive, chart, mockup, art, diagram).
@@ -126,40 +158,53 @@ Rules: canvas height on WRAPPER div only; responsive:true; legend disabled; bar 
 
 SVG_SETUP = """## SVG setup
 
-`<svg width="100%" viewBox="0 0 680 H">` — 680px fixed width, H = max content bottom + 60px.
+`<svg width="100%" viewBox="0 0 {canvas_w} {canvas_h}">` -- canvas_w/H computed from content (see LAYOUT PLANNING steps).
 
-Mandatory first line: `<rect width="100%" height="100%" fill="#ffffff"/>`
+Mandatory first child: `<rect width="100%" height="100%" fill="#ffffff"/>`
 
 Typography: title 15px #202124, label 13px #3c4043, caption 11px #5f6368.
 
-Arrow marker (required):
+Arrow marker (required in <defs>):
 ```svg
 <defs>
-  <marker id="a" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="4" markerHeight="4" orient="auto-start-reverse">
-    <path d="M2 1L8 5L2 9" fill="none" stroke="#5f6368" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+  <marker id="a" viewBox="0 0 10 10" refX="9" refY="5"
+          markerWidth="4" markerHeight="4" orient="auto-start-reverse">
+    <path d="M2 1L9 5L2 9" fill="none" stroke="#5f6368"
+          stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
   </marker>
 </defs>
 ```
 
-Arrow size: markerWidth/Height = 4 standard, never > 6. stroke-width = 1.2 standard, never > 1.5."""
+Arrow connection rules:
+- marker-end="url(#a)" on every <line> or <path>
+- LINE: x1/y1 = source node edge (not center); x2/y2 = dest node edge (not center)
+- PATH elbow (non-aligned nodes): M x1 y1 L x1 mid_y L x2 mid_y L x2 y2
+  where mid_y = (y1 + y2) / 2 -- produces clean right-angle bends, never diagonal
+- Shorten each endpoint 2px from the node rect edge to prevent overlap with node border.
+- markerWidth/Height = 4 (never > 6). stroke-width = 1.2 (never > 1.5).
+
+Height rule: canvas_h = row_y[last] + node_h[last] + 56. NEVER hardcode a value smaller than content requires."""
 
 
 DIAGRAM_TYPES = """## Diagram type catalog
 
-- Flowchart — nodes left→right or top→bottom; elbow connectors for non-aligned nodes
-- Sequence — two vertical lifelines + horizontal arrows
-- Timeline — horizontal baseline + staggered markers
-- Cycle — 3-5 nodes on a circle, curved bezier arrows
-- Hierarchy — root at top, vertical arrows to children
-- Layered stack — full-width horizontal bands
-- Quadrant — two cross axes, four quadrant rects
+Flowchart    -- nodes left->right or top->bottom; elbow paths for non-aligned nodes
+Sequence     -- two vertical lifelines + horizontal arrows; lifeline height = n_messages*60+80
+Timeline     -- horizontal baseline y=fixed; markers stagger above/below to avoid overlap
+Cycle        -- N nodes on a circle r=120; node_angle=i*360/N; bezier arrows along arc
+Hierarchy    -- root at top y=48; each level adds row_h+v_gap; children centered under parent
+Layered stack -- full-width horizontal bands; band_h = max(node_h)+32; stacked vertically
+Quadrant     -- two cross axes at canvas center; four rect zones; items placed by score
 
-Design rules:
-- ≤4 nodes per row, ≤5 words per node title
-- Node min-width = chars * 8 + 56px
-- Node min-height = 52px (1 line) / +22px per extra line
-- 2-3 color ramps max
-- Light fill → dark 600-series text"""
+Layout rules (apply to ALL diagram types):
+- node_w = max(120, min(280, widest_label_px + 56))
+- node_h = 44 + (extra_lines * 22)  [44 for 1 line; +22 per extra line]
+- Horizontal gap >= max(60, 0.5 * max_node_w)
+- Vertical gap   >= max(56, 0.4 * max_node_h)
+- canvas_w = rightmost (node_x + node_w) + 40  (min 520)
+- canvas_h = bottommost (node_y + node_h) + 56 (min 300)
+- Max 4 nodes per row; max 5 words per node title
+- 2-3 color ramps max; light fill with 600-series text"""
 
 
 MODULE_SECTIONS: dict[str, list[str]] = {

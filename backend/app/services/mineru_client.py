@@ -5,12 +5,15 @@ with a self-hosted FastAPI variant via env (MINERU_BASE_URL).
 """
 from __future__ import annotations
 import asyncio
+import logging
 import os
 from pathlib import Path
 from typing import Any
 import httpx
 
 from ..core.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 class MinerUError(Exception):
@@ -57,7 +60,9 @@ class MinerUClient:
                 "language": "ch",
                 "files": [{"name": file_name, "is_ocr": True}],
             }
+            logger.info("MinerU: POST %s  file=%s", req_url, file_name)
             r = await client.post(req_url, json=req_body, headers=self._headers())
+            logger.info("MinerU: file-urls/batch status=%s body=%s", r.status_code, r.text[:500])
             if r.status_code >= 400:
                 raise MinerUError(f"file-urls/batch HTTP {r.status_code}: {r.text[:300]}")
             data = r.json()
@@ -69,16 +74,19 @@ class MinerUClient:
             if not batch_id or not urls:
                 raise MinerUError(f"missing batch_id or file_urls in response: {data}")
             upload_url = urls[0]
+            logger.info("MinerU: batch_id=%s upload_url=%s…", batch_id, upload_url[:80])
 
             # 2) Upload file content via PUT (presigned). No auth header.
             with path.open("rb") as fh:
                 blob = fh.read()
             up = await client.put(upload_url, content=blob)
+            logger.info("MinerU: upload PUT status=%s", up.status_code)
             if up.status_code >= 400:
                 raise MinerUError(f"upload PUT HTTP {up.status_code}: {up.text[:200]}")
 
             # 3) Poll extract-results
             poll_url = f"{self.base_url}/api/v4/extract-results/batch/{batch_id}"
+            logger.info("MinerU: polling %s", poll_url)
             deadline = asyncio.get_running_loop().time() + self.timeout
             interval = 2.0
             while asyncio.get_running_loop().time() < deadline:
@@ -90,6 +98,7 @@ class MinerUClient:
                 if results:
                     item = results[0]
                     state = (item.get("state") or "").lower()
+                    logger.info("MinerU: poll state=%s item=%s", state, str(item)[:300])
                     if state == "done":
                         # Either a markdown_url or full_zip_url is returned. Prefer markdown_url.
                         md_url = item.get("full_md_link") or item.get("markdown_url") or item.get("md_url")

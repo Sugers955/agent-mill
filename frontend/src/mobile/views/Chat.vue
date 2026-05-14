@@ -53,7 +53,12 @@
 
             <details v-if="m.content_json?.thinking || m._thinking" class="thinking-card">
               <summary>思考过程</summary>
-              <div class="thinking-content">{{ m.content_json?.thinking || m._thinking }}</div>
+              <div class="thinking-body">
+                <div
+                  :ref="(el) => setThinkingRef(el, m)"
+                  class="thinking-content"
+                >{{ m.content_json?.thinking || m._thinking }}</div>
+              </div>
             </details>
 
             <div v-if="m._steps?.length || m.tool_calls_json?.trace?.length" class="step-list">
@@ -157,9 +162,11 @@
           @input="autoResize"
           @keydown.enter.exact.prevent="send"
         />
-        <button class="send-btn" :disabled="sending || !input.trim() || !chat.currentAgent" @click="send" aria-label="发送">
-          <svg v-if="!sending" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-          <span v-else class="spinner" />
+        <button v-if="sending" class="stop-btn" aria-label="停止生成" @click="stopStream">
+          <svg class="stop-spin" viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M12 2a10 10 0 0 1 10 10h-2a8 8 0 0 0-8-8V2z" opacity=".9"/><path d="M12 2a10 10 0 0 0-10 10h2a8 8 0 0 1 8-8V2z" opacity=".25"/></svg>
+        </button>
+        <button v-else class="send-btn" :disabled="!input.trim() || !chat.currentAgent" @click="send" aria-label="发送">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
         </button>
       </div>
     </div>
@@ -322,6 +329,8 @@ const route = useRoute()
 
 const input = ref('')
 const sending = ref(false)
+const streamAbortController = ref<AbortController | null>(null)
+function stopStream() { streamAbortController.value?.abort() }
 
 /** Same parser as desktop Chat.vue: split agent description into intro lines
  *  and starter questions (lines starting with '- ', '• ', '* ' or '1.'). */
@@ -521,6 +530,18 @@ function normalizeTrace(trace: any[] | undefined) {
   return steps
 }
 
+// -------- Thinking block: per-message scroll refs --------
+const thinkingRefs = new WeakMap<object, HTMLElement>()
+function setThinkingRef(el: unknown, m: object) {
+  if (el instanceof HTMLElement) thinkingRefs.set(m, el)
+}
+function scrollThinkingToBottom(m: object) {
+  nextTick(() => {
+    const el = thinkingRefs.get(m)
+    if (el) el.scrollTop = el.scrollHeight
+  })
+}
+
 function isWaiting(m: any): boolean {
   if (m.role !== 'assistant' || !m._streaming) return false
   if (m.content_json?.text) return false
@@ -642,11 +663,14 @@ async function onAgentCall(text: string) {
   await scrollBottom()
 
   const token = localStorage.getItem('access_token')
+  const controller = new AbortController()
+  streamAbortController.value = controller
   try {
     const resp = await fetch(`/api/conversations/${chat.currentConvId}/messages`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({ content: text, file_ids: [] }),
+      signal: controller.signal,
     })
     if (!resp.ok || !resp.body) throw new Error(`HTTP ${resp.status}`)
     const reader = resp.body.getReader()
@@ -665,8 +689,11 @@ async function onAgentCall(text: string) {
       }
     }
   } catch (e: any) {
-    placeholder.content_json.text += `\n\n[网络错误] ${e.message}`
+    if (e.name !== 'AbortError') {
+      placeholder.content_json.text += `\n\n[网络错误] ${e.message}`
+    }
   } finally {
+    streamAbortController.value = null
     placeholder._streaming = false
     sending.value = false
   }
@@ -708,11 +735,14 @@ async function send() {
   await scrollBottom()
 
   const token = localStorage.getItem('access_token')
+  const controller = new AbortController()
+  streamAbortController.value = controller
   try {
     const resp = await fetch(`/api/conversations/${chat.currentConvId}/messages`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({ content: text, file_ids: fileIds }),
+      signal: controller.signal,
     })
     if (!resp.ok || !resp.body) throw new Error(`HTTP ${resp.status}`)
     const reader = resp.body.getReader()
@@ -733,8 +763,11 @@ async function send() {
       }
     }
   } catch (e: any) {
-    placeholder.content_json.text += `\n\n[网络错误] ${e.message}`
+    if (e.name !== 'AbortError') {
+      placeholder.content_json.text += `\n\n[网络错误] ${e.message}`
+    }
   } finally {
+    streamAbortController.value = null
     placeholder._steps?.forEach((s: any) => { if (s.status === 'running') s.status = 'done' })
     placeholder._streaming = false
     sending.value = false
@@ -755,7 +788,7 @@ function applyEvent(m: any, ev: { type: string; data: any }) {
   const { type, data } = ev
   if (type === 'meta') m._meta = data
   else if (type === 'text') m.content_json.text += data.text || ''
-  else if (type === 'thinking') m._thinking += data.text || ''
+  else if (type === 'thinking') { m._thinking += data.text || ''; scrollThinkingToBottom(m) }
   else if (type === 'tool_use') {
     const id = data.id || data.name
     const existingIdx = m._stepIndex[id]
@@ -897,9 +930,39 @@ function applyEvent(m: any, ev: { type: string; data: any }) {
   color: var(--m-text-secondary); font-weight: 500;
 }
 .thinking-card summary::-webkit-details-marker { display: none; }
+.thinking-body {
+  position: relative;
+}
+.thinking-body::before,
+.thinking-body::after {
+  content: '';
+  position: absolute;
+  left: 0; right: 0;
+  height: 24px;
+  pointer-events: none;
+  z-index: 1;
+}
+.thinking-body::before {
+  top: 0;
+  background: linear-gradient(to bottom, #fafbfc 0%, transparent 100%);
+}
+.thinking-body::after {
+  bottom: 0;
+  background: linear-gradient(to top, #fafbfc 0%, transparent 100%);
+}
 .thinking-content {
-  padding: 0 12px 10px; white-space: pre-wrap; word-break: break-word;
+  max-height: 180px;
+  overflow-y: auto;
+  padding: 8px 12px; white-space: pre-wrap; word-break: break-word;
   color: var(--m-text-secondary); line-height: 1.6;
+  scrollbar-width: thin;
+  scrollbar-color: var(--m-border-strong) transparent;
+}
+.thinking-content::-webkit-scrollbar { width: 3px; }
+.thinking-content::-webkit-scrollbar-track { background: transparent; }
+.thinking-content::-webkit-scrollbar-thumb {
+  background: var(--m-border-strong);
+  border-radius: 2px;
 }
 
 .step-list { display: flex; flex-direction: column; gap: 5px; }
@@ -1098,6 +1161,16 @@ textarea {
 }
 .send-btn:disabled { background: var(--m-border-strong); }
 .send-btn:active:not(:disabled) { transform: scale(.94); }
+.stop-btn {
+  width: 36px; height: 36px; border-radius: 50%;
+  background: transparent; color: var(--m-text-secondary, #80868b);
+  display: inline-flex; align-items: center; justify-content: center;
+  flex-shrink: 0; border: none; cursor: pointer;
+  transition: background .15s, color .15s;
+}
+.stop-btn:active { transform: scale(.93); background: var(--m-surface-variant, #e8eaed); }
+.stop-spin { animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
 .spinner {
   width: 14px; height: 14px; border-radius: 50%;
   border: 2px solid rgba(255,255,255,.4);

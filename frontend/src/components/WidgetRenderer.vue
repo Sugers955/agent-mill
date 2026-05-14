@@ -32,11 +32,11 @@ const props = defineProps<{
 const emit = defineEmits<{ ready: []; resize: [number]; sendMessage: [string] }>()
 
 const MIN_HEIGHT = 350
-const STREAM_MIN_HEIGHT = 450
+const STREAM_MIN_HEIGHT = 400
 const MIN_WIDTH = 350
 const STREAM_MIN_WIDTH = 420
-const MAX_HEIGHT = 8000
-const POST_FINAL_DEAD_ZONE = 12  // ignore growth smaller than this px after finalize
+const MAX_HEIGHT = 12000
+const POST_FINAL_DEAD_ZONE = 8  // ignore growth smaller than this px after finalize
 
 const iframeRef = ref<HTMLIFrameElement | null>(null)
 const iframeReady = ref(false)
@@ -52,21 +52,26 @@ const finalizedCode = ref('')
 
 const srcdoc = computed(() => buildReceiverSrcdoc(getWidgetIframeStyleBlock()))
 
-/** Predict the iframe height ONLY when the widget is an SVG with a complete
- *  viewBox. For HTML widgets we return 0 (= "no prediction") so the panel
- *  starts at MIN_HEIGHT and shrinks to natural size on finalize, instead of
- *  being stuck at the streaming reservation. */
+/** Predict the iframe height from the SVG viewBox.
+ *  Uses the actual viewBox width (not a hardcoded 640) to compute the aspect ratio.
+ *  For HTML widgets returns 0 so the panel starts at MIN_HEIGHT and snaps at finalize. */
 function predictHeight(code: string): number {
   if (!code) return 0
   const looksHtml = /<(div|section|article|main|canvas|input|button)\b/i.test(code) && !code.trim().startsWith('<svg')
   if (looksHtml) return 0
   const vb = code.match(/viewBox\s*=\s*["']\s*[\d.]+\s+[\d.]+\s+([\d.]+)\s+([\d.]+)/i)
   if (vb) {
-    const w = parseFloat(vb[1])
-    const h = parseFloat(vb[2])
-    if (w > 0 && h > 0) {
-      const containerW = 640
-      const predicted = Math.round(h * (containerW / w))
+    const vbW = parseFloat(vb[1])
+    const vbH = parseFloat(vb[2])
+    if (vbW > 0 && vbH > 0) {
+      // The iframe fills its container (~100% of chat bubble width, typically 600-760px).
+      // We use the viewBox aspect ratio directly: rendered_h = vbH * (rendered_w / vbW).
+      // Without knowing the exact container width, use vbW itself as the reference —
+      // SVG scales proportionally so the ratio vbH/vbW is all we need.
+      const ratio = vbH / vbW
+      // Estimate container width conservatively at 680px (matches most chat layouts).
+      const estimatedW = 680
+      const predicted = Math.round(ratio * estimatedW)
       return Math.min(MAX_HEIGHT, Math.max(STREAM_MIN_HEIGHT, predicted))
     }
   }
@@ -79,9 +84,9 @@ if (seeded > 0) cachedHeight.value = seeded
 watch(() => props.widgetCode, (code) => {
   if (!code || isFinalized.value) return
   const predicted = predictHeight(code)
-  // SVGs only — HTML widgets stay at the streaming floor, then snap to true
-  // height at finalize.
-  if (predicted > 0 && predicted > cachedHeight.value) cachedHeight.value = predicted
+  // For SVGs: always update upward so a taller-than-expected viewBox doesn't get clipped.
+  // For HTML (predicted=0): keep the streaming floor until finalize.
+  if (predicted > cachedHeight.value) cachedHeight.value = predicted
 })
 
 const wrapperStyle = computed(() => {
@@ -111,12 +116,10 @@ function pushUpdate() {
 }
 
 function applyHeight(h: number) {
-  // Hard rule: NEVER react to ResizeObserver during streaming. Panel size is
-  // owned by the predicted height — silence is what kills the flicker.
-  if (props.isStreaming || !isFinalized.value) return
-  // After finalize: snap to true content height. Allow shrink (HTML widgets
-  // that are smaller than the streaming reservation) AND grow (SVG content
-  // that overflows its viewBox). Apply a small dead-zone to avoid wobble.
+  // After finalize: snap to true content height from getBBox/ResizeObserver.
+  // Allow both shrink (HTML smaller than streaming reservation) and grow
+  // (SVG content that exceeds viewBox). Dead-zone prevents micro-wobble.
+  if (!isFinalized.value) return
   const next = Math.max(MIN_HEIGHT, Math.min(h, MAX_HEIGHT))
   if (Math.abs(next - cachedHeight.value) < POST_FINAL_DEAD_ZONE) return
   cachedHeight.value = next

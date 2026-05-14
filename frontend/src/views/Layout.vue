@@ -48,7 +48,7 @@
             <el-icon :size="20"><Connection /></el-icon><span>MCP</span>
           </router-link>
           <router-link to="/tasks" class="rail-item" active-class="active">
-            <el-icon :size="20"><AlarmClock /></el-icon><span>任务</span>
+            <el-icon :size="20"><AlarmClock /></el-icon><span>自动化</span>
           </router-link>
           <router-link to="/space" class="rail-item" active-class="active">
             <el-icon :size="20"><Star /></el-icon><span>空间</span>

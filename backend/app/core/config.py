@@ -52,6 +52,9 @@ class Settings(BaseSettings):
     SMTP_USE_SSL: bool = False
     APP_BASE_URL: str = "http://localhost:5173"  # link target in emails / notifications
 
+    # ---- Logging ----
+    LOG_LEVEL: str = "INFO"  # DEBUG | INFO | WARNING | ERROR
+
 
 @lru_cache
 def get_settings() -> Settings:

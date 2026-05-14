@@ -74,7 +74,12 @@
                   <span>思考过程</span>
                   <span class="muted" style="font-size:11px;margin-left:6px">{{ (m.content_json?.thinking || m._thinking || '').length }} 字</span>
                 </summary>
-                <div class="thinking-content">{{ m.content_json?.thinking || m._thinking }}</div>
+                <div class="thinking-body">
+                  <div
+                    :ref="(el) => setThinkingRef(el, m)"
+                    class="thinking-content"
+                  >{{ m.content_json?.thinking || m._thinking }}</div>
+                </div>
               </details>
 
               <!-- tool / mcp / skill steps -->
@@ -223,9 +228,11 @@
             :disabled="sending || !chat.currentAgent"
             @keydown.enter.exact.prevent="send"
           />
-          <button class="send-btn" :disabled="sending || !input.trim() || !chat.currentAgent" @click="send">
-            <el-icon v-if="!sending" :size="18"><Promotion /></el-icon>
-            <el-icon v-else class="is-loading" :size="18"><Loading /></el-icon>
+          <button v-if="sending" class="stop-btn" title="停止生成" @click="stopStream">
+            <el-icon class="stop-spin" :size="22"><Loading /></el-icon>
+          </button>
+          <button v-else class="send-btn" :disabled="!input.trim() || !chat.currentAgent" @click="send">
+            <el-icon :size="18"><Promotion /></el-icon>
           </button>
         </div>
       </div>
@@ -253,7 +260,7 @@ import PackProgressCard from '@/components/PackProgressCard.vue'
 import PreviewPanel from '@/components/PreviewPanel.vue'
 import AgentCapabilityDrawer from '@/components/AgentCapabilityDrawer.vue'
 import MessageDispatcher from '@/agent-ui/engine/MessageDispatcher.vue'
-import { InfoFilled } from '@element-plus/icons-vue'
+import { InfoFilled, Loading } from '@element-plus/icons-vue'
 import { parseMessageContent } from '@/lib/widget-parser'
 
 const md = new MarkdownIt({ breaks: true, linkify: true })
@@ -263,6 +270,11 @@ const route = useRoute()
 
 const input = ref('')
 const sending = ref(false)
+const streamAbortController = ref<AbortController | null>(null)
+
+function stopStream() {
+  streamAbortController.value?.abort()
+}
 const scrollRef = ref<HTMLElement | null>(null)
 const previewFile = ref<any | null>(null)
 const capDrawerVisible = ref(false)
@@ -447,11 +459,14 @@ async function onAgentCall(text: string) {
   await scrollBottom()
 
   const token = localStorage.getItem('access_token')
+  const controller = new AbortController()
+  streamAbortController.value = controller
   try {
     const resp = await fetch(`/api/conversations/${chat.currentConvId}/messages`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({ content: text, file_ids: [] }),
+      signal: controller.signal,
     })
     if (!resp.ok || !resp.body) throw new Error(`HTTP ${resp.status}`)
     const reader = resp.body.getReader()
@@ -473,8 +488,11 @@ async function onAgentCall(text: string) {
       }
     }
   } catch (e: any) {
-    placeholder.content_json.text += `\n\n[网络错误] ${e.message}`
+    if (e.name !== 'AbortError') {
+      placeholder.content_json.text += `\n\n[网络错误] ${e.message}`
+    }
   } finally {
+    streamAbortController.value = null
     placeholder._streaming = false
     sending.value = false
   }
@@ -541,6 +559,20 @@ function formatStepData(v: any) {
     try { return JSON.stringify(JSON.parse(v), null, 2) } catch { return v }
   }
   return JSON.stringify(v, null, 2)
+}
+
+// -------- Thinking block: per-message scroll refs --------
+const thinkingRefs = new WeakMap<object, HTMLElement>()
+
+function setThinkingRef(el: unknown, m: object) {
+  if (el instanceof HTMLElement) thinkingRefs.set(m, el)
+}
+
+function scrollThinkingToBottom(m: object) {
+  nextTick(() => {
+    const el = thinkingRefs.get(m)
+    if (el) el.scrollTop = el.scrollHeight
+  })
 }
 
 // True while we've sent the question but no visible content has come back yet.
@@ -685,11 +717,14 @@ async function send() {
   await scrollBottom()
 
   const token = localStorage.getItem('access_token')
+  const controller = new AbortController()
+  streamAbortController.value = controller
   try {
     const resp = await fetch(`/api/conversations/${chat.currentConvId}/messages`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({ content: text, file_ids: fileIds }),
+      signal: controller.signal,
     })
     if (!resp.ok || !resp.body) throw new Error(`HTTP ${resp.status}`)
     const reader = resp.body.getReader()
@@ -710,8 +745,11 @@ async function send() {
       }
     }
   } catch (e: any) {
-    placeholder.content_json.text += `\n\n[网络错误] ${e.message}`
+    if (e.name !== 'AbortError') {
+      placeholder.content_json.text += `\n\n[网络错误] ${e.message}`
+    }
   } finally {
+    streamAbortController.value = null
     placeholder._steps?.forEach((s: any) => { if (s.status === 'running') s.status = 'done' })
     placeholder._streaming = false
     sending.value = false
@@ -736,6 +774,7 @@ function applyEvent(m: any, ev: { type: string; data: any }) {
     m.content_json.text += data.text || ''
   } else if (type === 'thinking') {
     m._thinking += data.text || ''
+    scrollThinkingToBottom(m)
   } else if (type === 'tool_use') {
     const id = data.id || data.name
     const existingIdx = m._stepIndex[id]
@@ -1003,10 +1042,41 @@ function applyEvent(m: any, ev: { type: string; data: any }) {
 }
 .thinking-card summary::-webkit-details-marker { display: none; }
 .thinking-card[open] summary { border-bottom: 1px dashed var(--m-border); }
+/* Wrapper: positions gradient overlay pseudo-elements */
+.thinking-body {
+  position: relative;
+}
+.thinking-body::before,
+.thinking-body::after {
+  content: '';
+  position: absolute;
+  left: 0; right: 0;
+  height: 28px;
+  pointer-events: none;
+  z-index: 1;
+}
+.thinking-body::before {
+  top: 0;
+  background: linear-gradient(to bottom, #fafbfc 0%, transparent 100%);
+}
+.thinking-body::after {
+  bottom: 0;
+  background: linear-gradient(to top, #fafbfc 0%, transparent 100%);
+}
 .thinking-content {
+  max-height: 200px;
+  overflow-y: auto;
   padding: 10px 14px; white-space: pre-wrap; word-break: break-word;
   color: var(--m-text-secondary); line-height: 1.65; font-size: 13px;
   font-family: 'Inter', sans-serif;
+  scrollbar-width: thin;
+  scrollbar-color: var(--m-border-strong) transparent;
+}
+.thinking-content::-webkit-scrollbar { width: 4px; }
+.thinking-content::-webkit-scrollbar-track { background: transparent; }
+.thinking-content::-webkit-scrollbar-thumb {
+  background: var(--m-border-strong);
+  border-radius: 2px;
 }
 
 /* step cards (tool / mcp / skill calls) */
@@ -1158,6 +1228,17 @@ function applyEvent(m: any, ev: { type: string; data: any }) {
 .send-btn { background: var(--m-primary); color: #fff; }
 .send-btn:hover:not(:disabled) { background: var(--m-primary-hover); }
 .send-btn:disabled { background: var(--m-border-strong); cursor: not-allowed; }
+.stop-btn {
+  border: none; cursor: pointer;
+  width: 40px; height: 40px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: transparent; color: var(--m-text-secondary, #80868b);
+  transition: background .15s ease, color .15s ease;
+  flex-shrink: 0;
+}
+.stop-btn:hover { background: var(--m-surface-variant, #e8eaed); color: var(--m-text, #3c4043); }
+.stop-btn:active { transform: scale(.93); }
+.stop-spin { animation: spin 1s linear infinite; }
 
 .is-loading { animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }

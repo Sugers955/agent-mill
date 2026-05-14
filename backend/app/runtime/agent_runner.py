@@ -32,7 +32,7 @@ _WIDGET_GUIDANCE = """
 ## 可视化输出指引（在没有更合适的 Skill 时使用）
 
 当用户请求可视化（可视化 / 流程图 / 架构图 / 示意图 / SVG / 图表 / HTML / 网页 / 表单），
-且你**没有更合适的 Skill** 来完成此任务时，请使用 `show-widget` 围栏在聊天里直接渲染：
+且你**没有更合适的 Skill** 来完成此任务时，且判断用户该任务的的预期答案是否更合适用可视化展示更清晰，更容易让人理解，上述这些情况下请使用 `show-widget` 围栏在聊天里直接渲染：
 
 ```show-widget
 {"title":"标题","widget_code":"<svg ...>...</svg>"}
@@ -76,6 +76,7 @@ _VIZ_KEYWORDS_HTML = (
     "交互", "interactive ui",
     "浏览器页面", "系统界面",
     "页面 demo", "页面demo",
+    "解释下","说明下","讲解下","分析下",
 )
 
 
@@ -90,7 +91,7 @@ def _wants_widget(text: str) -> bool:
 # knows they exist. The tool schemas carry the full description; this block
 # exists so the model reaches for them at the right time.
 _USER_INTERACTION_GUIDANCE = """
-## 需要用户参与决策时（重要 · 强制规则）
+## 需要用户参与决策时或者需要澄清一些需求（重要 · 强制规则）
 
 `ask_user_pick` 和 `ask_user_form` 是平台**内置的用户交互工具**，**不是 Skill 也不是业务工具**。
 即便用户说"不要使用 Skill / 不要使用工具"，你**仍然必须**调用这两个内置工具来向用户收集信息——

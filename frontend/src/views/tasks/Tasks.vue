@@ -1,7 +1,7 @@
 <template>
-  <div class="page tasks-page">
+  <div class="page">
     <div class="page-head">
-      <span class="page-title">任务</span>
+      <span class="page-title">自动化</span>
       <el-button type="primary" :icon="Plus" @click="openCreate">新建任务</el-button>
     </div>
 
