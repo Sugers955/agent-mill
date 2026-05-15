@@ -1,12 +1,24 @@
 # Agent Forge 智能体平台
 
-基于 [Claude Agent SDK](https://code.claude.com/docs/en/agent-sdk) 的企业级 SaaS 智能体平台。一套后台,支持多个智能体,管理员配置、普通用户使用,提供完整的 Skill / MCP / 模型 / 文件 / 安全 / 审计 闭环。
+基于 [Claude Agent SDK](https://code.claude.com/docs/en/agent-sdk) 深度开发的下一代智能体应用平台。我们致力于解决政府与企业在严苛内网环境下使用 AI 的核心痛点，内网没法安全使用智能体（类OpenClaw架构）的困境，通过 SaaS 化架构 实现安全、私有且高效的智能体部署。
+- 本项目平台架构可以实现插件化的业务安装和多智能体的构建和分发，只需要分钟时间就可以完成专业的智能体开发。真正实现技术和业务的分离，让业务驱动架构。
+- 同时创新性的实现了类似Claude官网的的UI动态渲染加载技术，可以看懂整个图的渲染不过，不用长时间等待。
+- 一套后台,支持多个智能体,管理员配置、普通用户使用,提供完整的 Skill / MCP / 模型 / 文件 / 安全 / 审计 闭环。
 
 - **后端**:FastAPI · SQLAlchemy 2.0 (async) · PostgreSQL · Claude Agent SDK · OpenAI Python SDK
 - **前端**:Vue 3 · Vite · TypeScript · Pinia · Element Plus
 - **AI 解析**:[MinerU](https://mineru.net) 云端/私有化双模式 + 本地 Python 库 fallback
 
 ---
+## 系统预览图：
+| 图片1 | 图片2 |
+| :---: | :---: |
+| 动态UI图流式渲染<img width="1400" height="729" alt="截屏2026-05-15 11 58 47" src="https://github.com/user-attachments/assets/8c816571-43ea-44f3-a723-824301d5e4bb" /> | 技能调用生成PPT<img width="1440" height="727" alt="截屏2026-05-15 12 00 05" src="https://github.com/user-attachments/assets/b802b2ce-7c7e-41fd-be5e-8340e2d9344f" /> |
+| 文件预览下载 <img width="1400" height="729" alt="截屏2026-05-15 12 00 29" src="https://github.com/user-attachments/assets/2dd07129-b800-4115-b734-1ebb2ecfe571" />| 在线生成html图 <img width="1440" height="685" alt="截屏2026-05-15 12 09 10" src="https://github.com/user-attachments/assets/9c127d38-223f-4e47-85ef-6f2691e043ee" />|
+| 复杂原理动态效果图<img width="1400" height="729" alt="截屏2026-05-15 12 34 58" src="https://github.com/user-attachments/assets/d116f216-1551-4e17-8c3a-5ce162cd58aa" />| MCP调用和表单渲染<img width="1440" height="792" alt="截屏2026-05-15 12 11 54" src="https://github.com/user-attachments/assets/05b9ad51-8b33-4fce-89e8-d826abe5fb40" />|
+| 智能体动态配置<img width="1200" height="729" alt="截屏2026-05-15 12 31 49" src="https://github.com/user-attachments/assets/7b5892ba-090a-4143-b548-644ed989f680" />| 整体安全防控架构<img width="300" height="500" alt="image" src="https://github.com/user-attachments/assets/0d40572b-50e5-4f5a-9a97-937afc1a26fa" />
+
+
 
 ## 一、功能总览
 
