@@ -1,6 +1,9 @@
 # Agent Forge 智能体平台
 
-基于 [Claude Agent SDK](https://code.claude.com/docs/en/agent-sdk) 的企业级 SaaS 智能体平台。一套后台,支持多个智能体,管理员配置、普通用户使用,提供完整的 Skill / MCP / 模型 / 文件 / 安全 / 审计 闭环。
+基于 [Claude Agent SDK](https://code.claude.com/docs/en/agent-sdk) 深度开发的下一代智能体应用平台。我们致力于解决政府与企业在严苛内网环境下使用 AI 的核心痛点，通过 SaaS 化架构 实现安全、私有且高效的智能体部署。
+解决了在企业和政府内网没法安全使用OpenClaw（小龙虾）的困境。本项目代码可以实现插件化的业务安装和多智能体的构建和分发，只需要分钟时间就可以完成专业的智能体开发。实现技术和业务的分离，让业务驱动架构。
+同时创新性的实现了类似Claude官网的的UI动态渲染加载技术，可以看懂整个图的渲染不过，不用长时间等待。
+一套后台,支持多个智能体,管理员配置、普通用户使用,提供完整的 Skill / MCP / 模型 / 文件 / 安全 / 审计 闭环。
 
 - **后端**:FastAPI · SQLAlchemy 2.0 (async) · PostgreSQL · Claude Agent SDK · OpenAI Python SDK
 - **前端**:Vue 3 · Vite · TypeScript · Pinia · Element Plus
