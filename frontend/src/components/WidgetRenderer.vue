@@ -38,6 +38,14 @@ const STREAM_MIN_WIDTH = 420
 const MAX_HEIGHT = 12000
 const POST_FINAL_DEAD_ZONE = 8  // ignore growth smaller than this px after finalize
 
+// Hard cap: widget must never exceed 90% of the browser viewport height.
+// Evaluated lazily so SSR / test environments without window don't break.
+function viewportCap(): number {
+  return typeof window !== 'undefined'
+    ? Math.floor(window.innerHeight * 0.9)
+    : MAX_HEIGHT
+}
+
 const iframeRef = ref<HTMLIFrameElement | null>(null)
 const iframeReady = ref(false)
 // `cachedHeight` is the iframe height — set ONCE per phase:
@@ -72,7 +80,7 @@ function predictHeight(code: string): number {
       // Estimate container width conservatively at 680px (matches most chat layouts).
       const estimatedW = 680
       const predicted = Math.round(ratio * estimatedW)
-      return Math.min(MAX_HEIGHT, Math.max(STREAM_MIN_HEIGHT, predicted))
+      return Math.min(viewportCap(), MAX_HEIGHT, Math.max(STREAM_MIN_HEIGHT, predicted))
     }
   }
   return 0
@@ -92,13 +100,15 @@ watch(() => props.widgetCode, (code) => {
 const wrapperStyle = computed(() => {
   const widthFloor = props.isStreaming ? STREAM_MIN_WIDTH : MIN_WIDTH
   const heightFloor = props.isStreaming ? STREAM_MIN_HEIGHT : MIN_HEIGHT
+  const cap = viewportCap()
   return {
-    minHeight: `${Math.max(cachedHeight.value, heightFloor)}px`,
+    minHeight: `${Math.min(Math.max(cachedHeight.value, heightFloor), cap)}px`,
+    maxHeight: `${cap}px`,
     minWidth: `${widthFloor}px`,
   }
 })
 const iframeStyle = computed(() => ({
-  height: `${cachedHeight.value}px`,
+  height: `${Math.min(cachedHeight.value, viewportCap())}px`,
 }))
 
 function postMessage(type: string, html?: string, extra?: Record<string, any>) {
@@ -119,8 +129,9 @@ function applyHeight(h: number) {
   // After finalize: snap to true content height from getBBox/ResizeObserver.
   // Allow both shrink (HTML smaller than streaming reservation) and grow
   // (SVG content that exceeds viewBox). Dead-zone prevents micro-wobble.
+  // Hard cap: never exceed 90% of the visible viewport.
   if (!isFinalized.value) return
-  const next = Math.max(MIN_HEIGHT, Math.min(h, MAX_HEIGHT))
+  const next = Math.max(MIN_HEIGHT, Math.min(h, viewportCap(), MAX_HEIGHT))
   if (Math.abs(next - cachedHeight.value) < POST_FINAL_DEAD_ZONE) return
   cachedHeight.value = next
 }

@@ -133,7 +133,7 @@
               </div>
 
               <!-- main answer -->
-              <div v-if="m.content_json?.text || m.role === 'user'" class="bubble">
+              <div v-if="m.content_json?.text || m.role === 'user'" :class="['bubble', { 'bubble--clamped': m.role === 'user' && isLongUserMsg(m) && !expandedMsgs[getMsgKey(m)] }]">
                 <template v-if="m.role === 'user'">
                   <div v-if="m.content_json?.files?.length" class="msg-files">
                     <span
@@ -147,6 +147,7 @@
                     </span>
                   </div>
                   <div class="bubble-content" v-html="md.render(m.content_json?.text || '')"></div>
+                  <div v-if="isLongUserMsg(m) && !expandedMsgs[getMsgKey(m)]" class="bubble-clamp-fade" />
                 </template>
                 <template v-else>
                   <template v-for="(seg, si) in parseSegments(m)" :key="seg.type === 'widget' ? (seg.partialKey || seg.stableKey) : `t-${si}`">
@@ -161,6 +162,16 @@
                   </template>
                 </template>
               </div>
+
+              <!-- expand/collapse for long user messages -->
+              <button
+                v-if="m.role === 'user' && isLongUserMsg(m)"
+                class="bubble-expand-btn"
+                @click="toggleExpandMsg(m)"
+              >
+                {{ expandedMsgs[getMsgKey(m)] ? '收起' : '展开' }}
+                <svg :class="['bubble-expand-chevron', { rotated: expandedMsgs[getMsgKey(m)] }]" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 6 8 10 12 6"/></svg>
+              </button>
 
               <!-- assistant message action bar (copy + favorite) -->
               <div
@@ -275,6 +286,18 @@ const streamAbortController = ref<AbortController | null>(null)
 function stopStream() {
   streamAbortController.value?.abort()
 }
+
+const expandedMsgs = ref<Record<string, boolean>>({})
+function getMsgKey(m: any) { return String(m.id ?? m._tmp ?? '') }
+function toggleExpandMsg(m: any) {
+  const key = getMsgKey(m)
+  expandedMsgs.value[key] = !expandedMsgs.value[key]
+}
+function isLongUserMsg(m: any) {
+  const text = m.content_json?.text || ''
+  return text.length > 400 || text.split('\n').length > 8
+}
+
 const scrollRef = ref<HTMLElement | null>(null)
 const previewFile = ref<any | null>(null)
 const capDrawerVisible = ref(false)
@@ -967,6 +990,25 @@ function applyEvent(m: any, ev: { type: string; data: any }) {
   background: var(--m-primary); color: #fff; border-color: transparent;
   border-radius: var(--m-radius-lg) var(--m-radius-sm) var(--m-radius-lg) var(--m-radius-lg);
 }
+.bubble--clamped { max-height: 200px; overflow: hidden; position: relative; }
+.bubble-clamp-fade {
+  position: absolute; bottom: 0; left: 0; right: 0; height: 56px;
+  background: linear-gradient(to bottom, transparent, var(--m-primary));
+  pointer-events: none;
+  border-radius: 0 0 var(--m-radius-lg) var(--m-radius-sm);
+}
+.bubble-expand-btn {
+  display: inline-flex; align-items: center; gap: 3px;
+  align-self: flex-end;
+  padding: 2px 8px; margin-top: 2px;
+  font-size: 12px; color: var(--m-primary);
+  background: transparent; border: none;
+  cursor: pointer; opacity: .75;
+  transition: opacity .15s;
+}
+.bubble-expand-btn:hover { opacity: 1; }
+.bubble-expand-chevron { transition: transform .2s ease; }
+.bubble-expand-chevron.rotated { transform: rotate(180deg); }
 .msg.assistant .bubble { border-radius: var(--m-radius-sm) var(--m-radius-lg) var(--m-radius-lg) var(--m-radius-lg); }
 .bubble :deep(p) { margin: 4px 0; }
 .bubble :deep(p:first-child) { margin-top: 0; }

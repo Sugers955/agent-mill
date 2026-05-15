@@ -121,7 +121,7 @@
               />
             </div>
 
-            <div v-if="m.content_json?.text || m.role === 'user'" class="bubble">
+            <div v-if="m.content_json?.text || m.role === 'user'" :class="['bubble', { 'bubble--clamped': m.role === 'user' && isLongUserMsg(m) && !expandedMsgs[getMsgKey(m)] }]">
               <div v-if="m.role === 'user' && m.content_json?.files?.length" class="msg-files">
                 <span
                   v-for="(f, fi) in m.content_json.files"
@@ -131,7 +131,18 @@
                 >📎 {{ f.name }}</span>
               </div>
               <div class="bubble-content" v-html="md.render(m.content_json?.text || '')"></div>
+              <div v-if="m.role === 'user' && isLongUserMsg(m) && !expandedMsgs[getMsgKey(m)]" class="bubble-clamp-fade" />
             </div>
+
+            <!-- expand/collapse for long user messages -->
+            <button
+              v-if="m.role === 'user' && isLongUserMsg(m)"
+              class="bubble-expand-btn"
+              @click="toggleExpandMsg(m)"
+            >
+              {{ expandedMsgs[getMsgKey(m)] ? '收起' : '展开' }}
+              <svg :class="['bubble-expand-chevron', { rotated: expandedMsgs[getMsgKey(m)] }]" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 6 8 10 12 6"/></svg>
+            </button>
 
             <!-- 助手回答操作栏：复制 + 收藏 -->
             <div
@@ -351,6 +362,17 @@ const input = ref('')
 const sending = ref(false)
 const streamAbortController = ref<AbortController | null>(null)
 function stopStream() { streamAbortController.value?.abort() }
+
+const expandedMsgs = ref<Record<string, boolean>>({})
+function getMsgKey(m: any) { return String(m.id ?? m._tmp ?? '') }
+function toggleExpandMsg(m: any) {
+  const key = getMsgKey(m)
+  expandedMsgs.value[key] = !expandedMsgs.value[key]
+}
+function isLongUserMsg(m: any) {
+  const text = m.content_json?.text || ''
+  return text.length > 400 || text.split('\n').length > 8
+}
 
 /** Same parser as desktop Chat.vue: split agent description into intro lines
  *  and starter questions (lines starting with '- ', '• ', '* ' or '1.'). */
@@ -1166,6 +1188,25 @@ function applyEvent(m: any, ev: { type: string; data: any }) {
   border-radius: 16px 6px 16px 16px;
   box-shadow: 0 1px 2px rgba(66,133,244,.25);
 }
+.bubble--clamped { max-height: 200px; overflow: hidden; position: relative; }
+.bubble-clamp-fade {
+  position: absolute; bottom: 0; left: 0; right: 0; height: 56px;
+  background: linear-gradient(to bottom, transparent, var(--m-primary));
+  pointer-events: none;
+  border-radius: 0 0 16px 6px;
+}
+.bubble-expand-btn {
+  display: inline-flex; align-items: center; gap: 3px;
+  align-self: flex-end;
+  padding: 2px 8px; margin-top: 2px;
+  font-size: 13px; color: var(--m-primary);
+  background: transparent; border: none;
+  cursor: pointer; opacity: .75;
+  transition: opacity .15s;
+}
+.bubble-expand-btn:hover { opacity: 1; }
+.bubble-expand-chevron { transition: transform .2s ease; }
+.bubble-expand-chevron.rotated { transform: rotate(180deg); }
 .msg.assistant .bubble { border-radius: 6px 16px 16px 16px; }
 .bubble :deep(p) { margin: 4px 0; }
 .bubble :deep(p:first-child) { margin-top: 0; }
