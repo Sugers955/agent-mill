@@ -19,6 +19,10 @@
         <span>密码</span>
         <input v-model="form.password" type="password" placeholder="输入密码" autocomplete="current-password" />
       </label>
+      <label class="remember-label">
+        <input type="checkbox" v-model="rememberMe" class="remember-check" />
+        记住密码
+      </label>
       <button class="primary-btn" type="submit" :disabled="loading">
         {{ loading ? '登录中…' : '登录' }}
       </button>
@@ -27,15 +31,30 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, ref } from 'vue'
+import { reactive, ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useMobileAuth } from '../stores/auth'
 import { showToast } from '../toast'
+
+const STORAGE_KEY = 'remembered_login'
 
 const router = useRouter()
 const auth = useMobileAuth()
 const form = reactive({ username: '', password: '' })
 const loading = ref(false)
+const rememberMe = ref(false)
+
+onMounted(() => {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY)
+    if (saved) {
+      const { username, password } = JSON.parse(saved)
+      form.username = username || ''
+      form.password = password || ''
+      rememberMe.value = true
+    }
+  } catch { localStorage.removeItem(STORAGE_KEY) }
+})
 
 async function onSubmit() {
   if (!form.username.trim() || !form.password) {
@@ -45,6 +64,11 @@ async function onSubmit() {
   loading.value = true
   try {
     await auth.login(form.username.trim(), form.password)
+    if (rememberMe.value) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ username: form.username.trim(), password: form.password }))
+    } else {
+      localStorage.removeItem(STORAGE_KEY)
+    }
     router.replace('/chat')
   } catch {
     // toast already shown
@@ -108,4 +132,12 @@ async function onSubmit() {
 }
 .primary-btn:active { background: var(--m-primary-hover); }
 .primary-btn:disabled { background: var(--m-border-strong); }
+
+.remember-label {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-size: 14px; color: var(--m-text-secondary);
+  cursor: pointer; user-select: none;
+  margin-top: -4px;
+}
+.remember-check { width: 16px; height: 16px; accent-color: var(--m-primary); cursor: pointer; }
 </style>

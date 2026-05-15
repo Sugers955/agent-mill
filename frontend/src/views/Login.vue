@@ -20,6 +20,12 @@
         <el-form-item label="密码" prop="password">
           <el-input v-model="form.password" type="password" show-password placeholder="输入密码" />
         </el-form-item>
+        <div class="remember-row">
+          <label class="remember-label">
+            <input type="checkbox" v-model="rememberMe" class="remember-check" />
+            记住密码
+          </label>
+        </div>
         <el-button type="primary" :loading="loading" style="width:100%;height:44px;font-size:15px" @click="onSubmit">
           登录
         </el-button>
@@ -29,19 +35,34 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, ref } from 'vue'
+import { reactive, ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuth } from '@/stores/auth'
+
+const STORAGE_KEY = 'remembered_login'
 
 const auth = useAuth()
 const router = useRouter()
 const formRef = ref<any>(null)
 const form = reactive({ username: '', password: '' })
 const loading = ref(false)
+const rememberMe = ref(false)
 const rules = {
   username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
   password: [{ required: true, message: '请输入密码', trigger: 'blur' }],
 }
+
+onMounted(() => {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY)
+    if (saved) {
+      const { username, password } = JSON.parse(saved)
+      form.username = username || ''
+      form.password = password || ''
+      rememberMe.value = true
+    }
+  } catch { localStorage.removeItem(STORAGE_KEY) }
+})
 
 async function onSubmit() {
   const ok = await formRef.value?.validate().catch(() => false)
@@ -49,6 +70,11 @@ async function onSubmit() {
   loading.value = true
   try {
     await auth.login(form.username, form.password)
+    if (rememberMe.value) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ username: form.username, password: form.password }))
+    } else {
+      localStorage.removeItem(STORAGE_KEY)
+    }
     router.push('/chat')
   } finally { loading.value = false }
 }
@@ -89,4 +115,12 @@ async function onSubmit() {
 
 .footer-hint { margin-top: 20px; text-align: center; color: var(--m-text-tertiary); font-size: 12px; }
 .footer-hint code { background: var(--m-surface-variant); padding: 2px 6px; border-radius: 4px; }
+
+.remember-row { margin: -4px 0 14px; }
+.remember-label {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 13px; color: var(--m-text-secondary);
+  cursor: pointer; user-select: none;
+}
+.remember-check { width: 14px; height: 14px; accent-color: var(--m-primary); cursor: pointer; }
 </style>
