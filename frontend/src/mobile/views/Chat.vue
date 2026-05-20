@@ -175,6 +175,7 @@
           <span class="chip-name">{{ f.name }}</span>
           <span v-if="f.parse_status === 'parsing'" class="chip-meta">解析中…</span>
           <span v-else-if="f.parse_status === 'done'" class="chip-meta">{{ f.parsed_chars }} 字</span>
+          <span v-else-if="f.parse_status === 'skipped'" class="chip-meta">原始文件</span>
           <span v-else-if="f.parse_status === 'failed'" class="chip-meta err">解析失败</span>
           <button class="chip-close" @click="removeFile(f)" aria-label="移除">×</button>
         </div>

@@ -126,6 +126,15 @@
           <el-input-number v-model="maxFilesPerSend" :min="0" :max="50" :step="1" controls-position="right" />
           <span style="margin-left:8px;font-size:12px;color:var(--m-text-secondary)">个 · 一次发送最多带几个文件,0 表示不限</span>
         </el-form-item>
+        <el-form-item label="文件解析模式">
+          <el-radio-group v-model="parseMode">
+            <el-radio value="auto">自动解析(默认)</el-radio>
+            <el-radio value="never">不解析,原始文件直传工具</el-radio>
+          </el-radio-group>
+          <div style="margin-top:4px;font-size:12px;color:var(--m-text-secondary)">
+            选"不解析"时,上传的文件不做文本提取,后端会在 Prompt 里给出本地路径和短期签名 URL,供 skill / MCP 工具按需读取原始文件
+          </div>
+        </el-form-item>
         <el-form-item label="文件解析长度">
           <el-input-number
             v-model="form.parsed_content_limit"
@@ -170,6 +179,7 @@ const form = reactive<any>(emptyForm())
 const extText = ref('')
 const maxSizeMb = ref<number>(0)
 const maxFilesPerSend = ref<number>(0)
+const parseMode = ref<'auto' | 'never'>('auto')
 const polishing = reactive({ description: false, system_prompt: false })
 
 async function onPolish(kind: 'description' | 'system_prompt') {
@@ -224,6 +234,7 @@ function openCreate() {
   extText.value = ''
   maxSizeMb.value = 5
   maxFilesPerSend.value = 5
+  parseMode.value = 'auto'
   visible.value = true
 }
 function openEdit(row: any) {
@@ -236,6 +247,7 @@ function openEdit(row: any) {
   maxSizeMb.value = Number(policy.max_size_mb || 0)
   // Backwards-compat: read legacy max_files_per_conv if present
   maxFilesPerSend.value = Number(policy.max_files_per_send || policy.max_files_per_conv || 0)
+  parseMode.value = (policy.parse_mode === 'never') ? 'never' : 'auto'
   visible.value = true
 }
 async function onSubmit() {
@@ -244,6 +256,7 @@ async function onSubmit() {
   if (ext.length) policy.allowed_ext = ext
   if (maxSizeMb.value > 0) policy.max_size_mb = maxSizeMb.value
   if (maxFilesPerSend.value > 0) policy.max_files_per_send = maxFilesPerSend.value
+  if (parseMode.value === 'never') policy.parse_mode = 'never'
   form.upload_policy_json = policy
   if (editing.value) await api.updateAgent(editing.value.id, form)
   else await api.createAgent(form)

@@ -1371,7 +1371,30 @@ class AgentRunner:
             head = f"### 📎 {name}"
             if chars:
                 head += f"  · {chars} 字符"
-            if status == "done" and md:
+            if status == "skipped":
+                # Raw passthrough: do not extract; expose path + signed URL so
+                # the model can forward them to skill / MCP tools as arguments.
+                lp = f.get("path") or ""
+                # Resolve to an absolute path — UPLOADS_DIR can be relative
+                # ("../storage/uploads"), which would be meaningless to MCP
+                # tools running in a different cwd.
+                if lp:
+                    from pathlib import Path as _P
+                    try:
+                        lp = str(_P(lp).resolve())
+                    except Exception:
+                        pass
+                ru = f.get("raw_url") or ""
+                mime = f.get("mime") or ""
+                size = f.get("size") or 0
+                parts = [f"{head}  · 原始文件直传 (mime={mime}, size={size}B)"]
+                if ru:
+                    parts.append(f"- 下载 URL(**推荐**,MCP / 远程工具均可拉取): `{ru}`")
+                if lp:
+                    parts.append(f"- 本地绝对路径(仅当工具与后端在同一文件系统时可用): `{lp}`")
+                parts.append("- 调用工具时优先把 URL 作为参数;只有确认工具能直接读本地磁盘时才用 path。不要尝试在对话中读取该文件内容。")
+                sections.append("\n".join(parts))
+            elif status == "done" and md:
                 from ..services.file_parser import clip_for_prompt as _clip
                 body_md = _clip(md, cap)
                 if cap > 0 and chars > cap:
@@ -1385,7 +1408,7 @@ class AgentRunner:
             else:
                 sections.append(f"{head}\n\n(文件未解析,可向用户说明)")
         body = "\n\n".join(sections)
-        return ("\n\n---\n\n# 用户上传的附件(已解析为文本,你可以直接引用其中内容)\n\n"
+        return ("\n\n---\n\n# 用户上传的附件(已解析的文本可直接引用;标注为'原始文件直传'的需把 path/url 当作工具参数)\n\n"
                 f"{body}\n\n---\n")
 
     @staticmethod

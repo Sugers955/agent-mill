@@ -95,10 +95,17 @@ async def upload(
         size=size, mime=file.content_type or "application/octet-stream",
         parse_status="parsing",
     )
+    # ---- parse_mode: "auto" (default) / "never" ----
+    # When the Agent declares parse_mode="never", the original file is forwarded
+    # to skills/MCP as-is without text extraction. parse_status="skipped" tells
+    # the chat layer to expose a signed URL + local path instead of markdown.
+    parse_mode = str(policy.get("parse_mode") or "auto").lower()
+    if parse_mode == "never":
+        rec.parse_status = "skipped"
     db.add(rec); await db.commit(); await db.refresh(rec)
 
-    # Async parse in background
-    background.add_task(parse_uploaded_file, rec.id)
+    if rec.parse_status == "parsing":
+        background.add_task(parse_uploaded_file, rec.id)
 
     return _to_brief(rec)
 
@@ -154,8 +161,14 @@ async def _resolve_caller_dual(
     db: AsyncSession,
     bearer_cred: HTTPAuthorizationCredentials | None,
     query_token: str | None,
+    file_id: int | None = None,
 ) -> User:
-    """Auth via Authorization header OR ?t= query param (for browser direct GET)."""
+    """Auth via Authorization header OR ?t= query param (for browser direct GET).
+
+    Accepts two token types:
+      * type="access"  — full user session token (default)
+      * type="file"    — short-lived single-file token (must match file_id)
+    """
     raw = bearer_cred.credentials if bearer_cred else query_token
     if not raw:
         raise HTTPException(401, "missing token")
@@ -163,7 +176,11 @@ async def _resolve_caller_dual(
         payload = decode_token(raw)
     except Exception:
         raise HTTPException(401, "invalid token")
-    if payload.get("type") != "access":
+    tok_type = payload.get("type")
+    if tok_type == "file":
+        if file_id is None or int(payload.get("file_id", 0)) != int(file_id):
+            raise HTTPException(401, "file token mismatch")
+    elif tok_type != "access":
         raise HTTPException(401, "wrong token type")
     user_id = int(payload.get("sub", 0))
     user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
@@ -180,7 +197,7 @@ async def serve_raw(
     t: str | None = Query(default=None),
 ):
     """Stream the original uploaded file. Authn via Bearer header OR ?t=<jwt>."""
-    user = await _resolve_caller_dual(db, bearer, t)
+    user = await _resolve_caller_dual(db, bearer, t, file_id=file_id)
     rec = (await db.execute(select(UploadedFile).where(UploadedFile.id == file_id))).scalar_one_or_none()
     if not rec or rec.user_id != user.id:
         raise HTTPException(404, "文件不存在")

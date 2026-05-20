@@ -154,6 +154,16 @@ PDF/DOCX/PPTX/XLSX/PNG/JPG → MinerU(云端/私有化)→ 失败回退本地库
 
 - MinerU 云端流程:申请预签名 URL → PUT 上传 → 轮询 batch 结果 → 拿 markdown
 - 私有化部署只改三个 env(`MINERU_MODE=local`、`MINERU_BASE_URL`、`MINERU_API_KEY`),业务代码零侵入
+
+#### 原始文件直传（parse_mode=never）
+
+针对盖章 PDF / 视觉模型 / 二进制专用格式等场景，Agent 可关闭自动解析，把原文件交给工具处理。
+
+- Agent 编辑页 → **文件解析模式** → 选「不解析,原始文件直传工具」
+- 上传时 `parse_status="skipped"`，不做 OCR / 文本提取
+- 发送消息时后端为该文件签发 60 分钟短期 token，prompt 中给出本地路径（供 skill 读）+ 签名 URL（供 MCP 拉取）
+- 跨主机部署需在后端 env 配 `BACKEND_BASE_URL` 为 MCP 可访问的 backend 地址
+- 详情见 [docs/handover/raw-file-passthrough.md](docs/handover/raw-file-passthrough.md) / [docs/insights/why-raw-file-mode.md](docs/insights/why-raw-file-mode.md)
 - 解析硬上限 20K 字符,超长截头尾省中间
 
 ### 3.5 文件下载与预览

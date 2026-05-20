@@ -51,6 +51,9 @@ class Settings(BaseSettings):
     SMTP_USE_TLS: bool = True  # STARTTLS; for SSL on 465 set to False and SMTP_USE_SSL=True
     SMTP_USE_SSL: bool = False
     APP_BASE_URL: str = "http://localhost:5173"  # link target in emails / notifications
+    # Backend public base URL used when handing out signed file URLs to external
+    # tools (MCP servers). Falls back to APP_BASE_URL when unset.
+    BACKEND_BASE_URL: str = ""
 
     # ---- Logging ----
     LOG_LEVEL: str = "INFO"  # DEBUG | INFO | WARNING | ERROR

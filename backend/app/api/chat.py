@@ -386,7 +386,7 @@ async def send_message(
             )
         )).scalars().all()
         for r in rows:
-            files.append({
+            file_entry = {
                 "name": r.name,
                 "path": r.path,
                 "mime": r.mime,
@@ -394,7 +394,17 @@ async def send_message(
                 "parse_status": r.parse_status,
                 "parsed_markdown": r.parsed_markdown if r.parse_status == "done" else None,
                 "parse_error": r.parse_error,
-            })
+            }
+            # For files uploaded with parse_mode="never", expose a signed URL
+            # so MCP tools (which can't read local paths) can pull raw bytes.
+            if r.parse_status == "skipped":
+                from ..core.security import create_file_token
+                from ..core.config import settings as _s
+                base = (_s.BACKEND_BASE_URL or _s.APP_BASE_URL or "").rstrip("/")
+                tok = create_file_token(r.id, user.id, minutes=60)
+                file_entry["raw_url"] = f"{base}/api/files/{r.id}/raw?t={tok}"
+                file_entry["id"] = r.id
+            files.append(file_entry)
             # Mark last_used_at so the cleanup task knows this file is still referenced
             r.last_used_at = _dt.now(_tz.utc)
         if rows:

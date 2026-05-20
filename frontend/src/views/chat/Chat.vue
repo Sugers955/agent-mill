@@ -216,6 +216,7 @@
             <span class="chip-name">{{ f.name }}</span>
             <span v-if="f.parse_status === 'done'" class="chip-meta">{{ f.parsed_chars }} 字</span>
             <span v-else-if="f.parse_status === 'parsing'" class="chip-meta">解析中</span>
+            <span v-else-if="f.parse_status === 'skipped'" class="chip-meta">原始文件</span>
             <button v-else-if="f.parse_status === 'failed'" class="chip-action" @click="retryFile(f)" title="重试">重试</button>
             <button v-if="canPreview(f)" class="chip-action" @click="openPreview(f)" title="预览">
               <el-icon :size="12"><View /></el-icon>
