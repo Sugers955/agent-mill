@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     """
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
-    DATABASE_URL: str = "postgresql+asyncpg://h3c:h3c@localhost:5432/h3c_agent"
+    DATABASE_URL: str = "postgresql+asyncpg://agent_mill:agent_mill@localhost:5432/agent_mill"
 
     # MUST be replaced in production via env. 32+ bytes random.
     JWT_SECRET: str = "change-me-in-production"

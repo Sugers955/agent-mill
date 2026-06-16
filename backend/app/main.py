@@ -77,7 +77,7 @@ async def lifespan(app: FastAPI):
             pass
 
 
-app = FastAPI(title="H3C Agent", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="Agent Mill", version="0.1.0", lifespan=lifespan)
 
 logging.basicConfig(
     level=getattr(logging, settings.LOG_LEVEL.upper(), logging.INFO),

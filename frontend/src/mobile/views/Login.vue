@@ -1,11 +1,8 @@
 <template>
   <div class="login-wrap">
     <div class="hero">
-      <div class="brand-mark">
-        <span class="dot d1" /><span class="dot d2" />
-        <span class="dot d3" /><span class="dot d4" />
-      </div>
-      <div class="brand">Agent Forge</div>
+      <img class="brand-logo" src="/logo.png" alt="Agent Mill" />
+      <div class="brand">Agent Mill</div>
       <div class="welcome">欢迎回来</div>
       <div class="subtitle">登录后开始与你的智能体协作</div>
     </div>
@@ -88,13 +85,10 @@ async function onSubmit() {
   padding-bottom: calc(var(--safe-bottom) + 24px);
 }
 .hero { text-align: center; margin-bottom: 36px; }
-.brand-mark {
-  display: inline-grid; grid-template-columns: 1fr 1fr; gap: 4px;
-  width: 36px; height: 36px; margin: 0 auto 12px;
+.brand-logo {
+  display: block; width: 48px; height: 48px; border-radius: 10px;
+  object-fit: contain; margin: 0 auto 12px;
 }
-.brand-mark .dot { border-radius: 50%; }
-.d1 { background: #4285f4 } .d2 { background: #ea4335 }
-.d3 { background: #fbbc04 } .d4 { background: #34a853 }
 .brand { font-size: 14px; color: var(--m-text-secondary); margin-bottom: 24px; }
 .welcome { font-size: 26px; font-weight: 600; letter-spacing: -.01em; }
 .subtitle { color: var(--m-text-secondary); font-size: 14px; margin-top: 6px; }

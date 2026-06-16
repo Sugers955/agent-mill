@@ -3,10 +3,8 @@
     <!-- Side rail -->
     <aside class="rail">
       <div class="rail-brand">
-        <div class="brand-mark">
-          <span class="dot dot-1" /><span class="dot dot-2" /><span class="dot dot-3" /><span class="dot dot-4" />
-        </div>
-        <div class="brand-name">Agent Forge</div>
+        <img class="brand-logo" src="/logo.png" alt="Agent Mill" />
+        <div class="brand-name">Agent Mill</div>
       </div>
 
       <nav class="rail-nav">
@@ -485,10 +483,7 @@ async function onChangePassword() {
   display: flex; flex-direction: column;
 }
 .rail-brand { display:flex; align-items:center; gap: 10px; padding: 0 12px 24px; }
-.brand-mark { display:grid; grid-template-columns: 1fr 1fr; gap: 3px; width: 22px; height: 22px; }
-.dot { border-radius: 50%; }
-.dot-1 { background:#4285f4 } .dot-2 { background:#ea4335 }
-.dot-3 { background:#fbbc04 } .dot-4 { background:#34a853 }
+.brand-logo { width: 28px; height: 28px; border-radius: 6px; object-fit: contain; flex-shrink: 0; }
 .brand-name { font-size: 17px; font-weight: 600; letter-spacing: -0.01em; }
 
 .rail-nav { display:flex; flex-direction: column; gap: 2px; min-height: 0; flex: 1; }

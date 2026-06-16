@@ -1,13 +1,15 @@
 # 根目录部署配置（含真实密码，绝不提交）
 .env
 
-backend/__pycache__/
-backend/**/__pycache__/
+# Python 缓存与构建产物（全库通用）
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
 backend/.env
 backend/.env.local
-backend/*.egg-info/
 backend/.venv/
-backend/.pytest_cache/
 
 frontend/node_modules/
 frontend/dist/

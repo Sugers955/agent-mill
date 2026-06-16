@@ -5,10 +5,8 @@
     <div class="login-shape shape-3" />
     <div class="login-card">
       <div class="brand">
-        <div class="brand-mark">
-          <span class="dot dot-1" /><span class="dot dot-2" /><span class="dot dot-3" /><span class="dot dot-4" />
-        </div>
-        <div class="brand-name">Agent Forge</div>
+        <img class="brand-logo" src="/logo.png" alt="Agent Mill" />
+        <div class="brand-name">Agent Mill</div>
       </div>
       <h2 class="title">欢迎回来</h2>
       <p class="subtitle">登录后开始与你的智能体协作</p>
@@ -104,10 +102,7 @@ async function onSubmit() {
   box-shadow: 0 20px 60px rgba(60,64,67,.18);
 }
 .brand { display:flex; align-items:center; gap: 10px; margin-bottom: 28px; }
-.brand-mark { display:grid; grid-template-columns: 1fr 1fr; gap: 3px; width: 22px; height: 22px; }
-.dot { border-radius: 50%; }
-.dot-1 { background:#4285f4 } .dot-2 { background:#ea4335 }
-.dot-3 { background:#fbbc04 } .dot-4 { background:#34a853 }
+.brand-logo { width: 36px; height: 36px; border-radius: 8px; object-fit: contain; flex-shrink: 0; }
 .brand-name { font-size: 18px; font-weight: 600; letter-spacing: -0.01em; }
 
 .title { margin: 0 0 4px; font-size: 28px; font-weight: 600; letter-spacing: -0.02em; }

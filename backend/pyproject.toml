@@ -1,7 +1,7 @@
 [project]
-name = "h3c-agent-backend"
+name = "agent-mill-backend"
 version = "0.1.0"
-description = "H3C Agent SaaS backend"
+description = "Agent Mill backend"
 requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.115",

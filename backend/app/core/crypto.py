@@ -8,7 +8,7 @@ def _get_fernet() -> Fernet:
     key = settings.ENCRYPTION_KEY
     if not key:
         # dev fallback: derive a deterministic key from JWT_SECRET (NOT for prod)
-        raw = (settings.JWT_SECRET + "-h3c-fernet").encode()[:32].ljust(32, b"0")
+        raw = (settings.JWT_SECRET + "-agent-mill-fernet").encode()[:32].ljust(32, b"0")
         key = base64.urlsafe_b64encode(raw).decode()
     return Fernet(key.encode() if isinstance(key, str) else key)
 

@@ -16,7 +16,7 @@
     <div ref="scrollRef" class="messages">
       <div v-if="!chat.currentConvId || chat.messages.length === 0" class="welcome">
         <div class="welcome-mark">
-          <span class="dot d1" /><span class="dot d2" /><span class="dot d3" /><span class="dot d4" />
+          <img class="welcome-logo" src="/logo.png" alt="Agent Mill" />
         </div>
         <h2 v-if="chat.currentAgent">你好，我是 {{ chat.currentAgent.name }}</h2>
         <h2 v-else>暂无可用智能体</h2>
@@ -212,12 +212,9 @@
     <div :class="['mb-drawer-mask', { open: drawerOpen }]" @click="drawerOpen = false" />
     <aside :class="['mb-drawer', { open: drawerOpen }]">
       <div class="drawer-brand">
-        <div class="brand-mark">
-          <span class="dot d1" /><span class="dot d2" />
-          <span class="dot d3" /><span class="dot d4" />
-        </div>
+        <img class="brand-logo" src="/logo.png" alt="Agent Mill" />
         <div class="brand-text">
-          <div class="brand-name">Agent Forge</div>
+          <div class="brand-name">Agent Mill</div>
           <div class="brand-sub">智能体助手</div>
         </div>
       </div>
@@ -978,13 +975,8 @@ function applyEvent(m: any, ev: { type: string; data: any }) {
   text-align: center; color: var(--m-text-secondary);
   padding: 40px 24px;
 }
-.welcome-mark {
-  display: grid; grid-template-columns: 1fr 1fr; gap: 6px;
-  width: 44px; height: 44px; margin-bottom: 14px;
-}
-.welcome-mark .dot { border-radius: 50%; }
-.d1 { background:#4285f4 } .d2 { background:#ea4335 }
-.d3 { background:#fbbc04 } .d4 { background:#34a853 }
+.welcome-mark { width: 56px; height: 56px; margin-bottom: 14px; }
+.welcome-logo { width: 100%; height: 100%; border-radius: 12px; object-fit: contain; }
 .welcome h2 { margin: 6px 0 4px; font-size: 20px; color: var(--m-text); font-weight: 600; }
 .welcome p { margin: 0; font-size: 16px; }
 .welcome-intro {
@@ -1350,12 +1342,7 @@ textarea {
   padding-top: calc(env(safe-area-inset-top, 0px) + 18px);
   flex-shrink: 0;
 }
-.brand-mark {
-  width: 32px; height: 32px;
-  display: grid; grid-template-columns: 1fr 1fr; gap: 4px;
-  flex-shrink: 0;
-}
-.brand-mark .dot { border-radius: 50%; }
+.brand-logo { width: 32px; height: 32px; border-radius: 6px; object-fit: contain; flex-shrink: 0; }
 .brand-text { line-height: 1.2; }
 .brand-name { font-size: 16px; font-weight: 600; color: var(--m-text); letter-spacing: -.01em; }
 .brand-sub { font-size: 14px; color: var(--m-text-secondary); margin-top: 2px; }

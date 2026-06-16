@@ -1,7 +1,7 @@
 /**
  * widget-theme — minimal CSS bridge for widget iframe.
  *
- * Maps h3c-agent's Google-style design tokens into the iframe so widget
+ * Maps Agent Mill's Google-style design tokens into the iframe so widget
  * markup that uses utility classes (flex/gap/text-sm) renders consistently.
  * Intentionally trimmed vs agent-ide's widget-css-bridge — we only ship what
  * widget templates actually use.

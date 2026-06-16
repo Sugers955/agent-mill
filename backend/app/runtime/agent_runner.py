@@ -1199,7 +1199,7 @@ class AgentRunner:
             call_kwargs.setdefault(k, str(target_path))
 
         # Dynamically import the script as a fresh module
-        mod_name = f"_h3c_skill_{skill}_{script_path.stem}_{_uuid.uuid4().hex[:6]}"
+        mod_name = f"_agent_mill_skill_{skill}_{script_path.stem}_{_uuid.uuid4().hex[:6]}"
         spec = _ilu.spec_from_file_location(mod_name, script_path)
         if spec is None or spec.loader is None:
             return {"error": "failed to load script spec"}
@@ -2018,7 +2018,7 @@ class AgentRunner:
                        if s.type == "atomic" and (s.source_json or {}).get("path")]
         if not path_skills:
             return None
-        sandbox = _Path(tempfile.mkdtemp(prefix=f"h3c-agent-{self.ctx.agent.id}-"))
+        sandbox = _Path(tempfile.mkdtemp(prefix=f"agent-mill-{self.ctx.agent.id}-"))
         skills_root = sandbox / ".claude" / "skills"
         skills_root.mkdir(parents=True, exist_ok=True)
         for s in path_skills:

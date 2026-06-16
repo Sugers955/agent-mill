@@ -5,8 +5,7 @@
       <div ref="scrollRef" class="messages">
         <div v-if="!chat.currentConvId || chat.messages.length === 0" class="welcome">
           <div class="welcome-mark">
-            <span class="dot dot-1" /><span class="dot dot-2" />
-            <span class="dot dot-3" /><span class="dot dot-4" />
+            <img class="welcome-logo" src="/logo.png" alt="Agent Mill" />
           </div>
           <h2 v-if="chat.currentAgent">
             你好,我是 {{ chat.currentAgent.name }}
@@ -898,10 +897,8 @@ function applyEvent(m: any, ev: { type: string; data: any }) {
 }
 .starter-chip:active:not(:disabled) { transform: scale(.99); }
 .starter-chip:disabled { opacity: .55; cursor: not-allowed; }
-.welcome-mark { display:grid; grid-template-columns: 1fr 1fr; gap: 6px; width: 48px; height: 48px; }
-.welcome-mark .dot { border-radius: 50%; width: 100%; height: 100%; }
-.welcome-mark .dot-1 { background:#4285f4 } .welcome-mark .dot-2 { background:#ea4335 }
-.welcome-mark .dot-3 { background:#fbbc04 } .welcome-mark .dot-4 { background:#34a853 }
+.welcome-mark { width: 64px; height: 64px; }
+.welcome-logo { width: 100%; height: 100%; border-radius: 12px; object-fit: contain; }
 
 .msg { display: flex; gap: 12px; max-width: 850px; margin: 0 auto 16px; padding: 0 24px; }
 .msg.user { flex-direction: row-reverse; }

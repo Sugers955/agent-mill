@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# deploy.sh — Agent Forge 一键服务器部署脚本
+# deploy.sh — Agent Mill 一键服务器部署脚本
 #
 # 首次部署:  ./deploy.sh
 # 更新部署:  ./deploy.sh --update
@@ -174,7 +174,7 @@ step "等待数据库就绪"
 
 DB_READY=false
 for i in $(seq 1 30); do
-  if $COMPOSE exec -T db pg_isready -U "${DB_USER:-h3c}" -d "${DB_NAME:-h3c_agent}" >/dev/null 2>&1; then
+  if $COMPOSE exec -T db pg_isready -U "${DB_USER:-agent_mill}" -d "${DB_NAME:-agent_mill}" >/dev/null 2>&1; then
     DB_READY=true
     break
   fi

@@ -5,11 +5,11 @@ services:
     image: postgres:16
     restart: always
     environment:
-      POSTGRES_USER: ${DB_USER:-h3c}
+      POSTGRES_USER: ${DB_USER:-agent_mill}
       POSTGRES_PASSWORD: ${DB_PASSWORD}
-      POSTGRES_DB: ${DB_NAME:-h3c_agent}
+      POSTGRES_DB: ${DB_NAME:-agent_mill}
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-h3c} -d ${DB_NAME:-h3c_agent}"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-agent_mill} -d ${DB_NAME:-agent_mill}"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -27,7 +27,7 @@ services:
     env_file:
       - ./.env
     environment:
-      DATABASE_URL: postgresql+asyncpg://${DB_USER:-h3c}:${DB_PASSWORD}@db:5432/${DB_NAME:-h3c_agent}
+      DATABASE_URL: postgresql+asyncpg://${DB_USER:-agent_mill}:${DB_PASSWORD}@db:5432/${DB_NAME:-agent_mill}
       CORS_ORIGINS: "${APP_BASE_URL:-http://localhost},http://localhost"
       STORAGE_ROOT: /app/storage
       SKILLS_DIR: /app/storage/skills

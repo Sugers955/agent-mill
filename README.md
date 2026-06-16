@@ -1,4 +1,4 @@
-# Agent Forge 智能体平台
+# Agent Mill 智能体平台
 
 基于 [Claude Agent SDK](https://code.claude.com/docs/en/agent-sdk) 深度开发的下一代智能体应用平台。我们致力于解决政府与企业在严苛内网环境下使用 AI 的核心痛点，内网没法安全使用智能体（类OpenClaw架构）的困境，通过 SaaS 化架构 实现安全、私有且高效的智能体部署。
 - 本项目平台架构可以实现插件化的业务安装和多智能体的构建和分发，只需要分钟时间就可以完成专业的智能体开发。真正实现技术和业务的分离，让业务驱动架构。
@@ -43,7 +43,7 @@
 ## 二、目录结构
 
 ```
-h3c-agent/
+agent-mill/
 ├── backend/
 │   ├── app/
 │   │   ├── api/
@@ -204,8 +204,8 @@ PDF/DOCX/PPTX/XLSX/PNG/JPG → MinerU(云端/私有化)→ 失败回退本地库
 
 ```bash
 # 1. 克隆代码
-git clone <repo-url> h3c-agent
-cd h3c-agent
+git clone <repo-url> agent-mill
+cd agent-mill
 
 # 2. 生成配置文件
 cp .env.example .env
@@ -266,8 +266,8 @@ docker compose restart api                 # 重启后端
 
 ```bash
 # 1. 启动 PostgreSQL（用 Docker 快速拉起）
-docker run -d --name h3c-pg -p 5432:5432 \
-  -e POSTGRES_USER=h3c -e POSTGRES_PASSWORD=h3c -e POSTGRES_DB=h3c_agent \
+docker run -d --name agent-mill-pg -p 5432:5432 \
+  -e POSTGRES_USER=agent_mill -e POSTGRES_PASSWORD=agent_mill -e POSTGRES_DB=agent_mill \
   postgres:16
 
 # 2. 后端
@@ -287,8 +287,8 @@ cd ..
 ./stop.sh         # 停止
 
 # 实时日志
-tail -f /tmp/agent-forge-backend.log
-tail -f /tmp/agent-forge-frontend.log
+tail -f /tmp/agent-mill-backend.log
+tail -f /tmp/agent-mill-frontend.log
 ```
 
 ---
@@ -299,15 +299,15 @@ tail -f /tmp/agent-forge-frontend.log
 
 ```bash
 # ── Docker Compose 专属 ────────────────────────────────
-DB_USER=h3c                          # 数据库用户名（默认即可）
+DB_USER=agent_mill                          # 数据库用户名（默认即可）
 DB_PASSWORD=<强密码>                  # 数据库密码（与 DATABASE_URL 保持一致）
-DB_NAME=h3c_agent                    # 数据库名（默认即可）
+DB_NAME=agent_mill                    # 数据库名（默认即可）
 WEB_PORT=80                          # 前端对外端口
 API_PORT=8000                        # 后端对外端口
 
 # ── 数据库连接 ─────────────────────────────────────────
 # Docker 部署时由 docker-compose.yml 自动覆盖为容器内地址，无需手动改
-DATABASE_URL=postgresql+asyncpg://h3c:<DB_PASSWORD>@localhost:5432/h3c_agent
+DATABASE_URL=postgresql+asyncpg://agent_mill:<DB_PASSWORD>@localhost:5432/agent_mill
 
 # ── 访问地址 ────────────────────────────────────────────
 APP_BASE_URL=http://your-server-ip   # CORS 白名单 + 邮件回链
@@ -505,3 +505,4 @@ git diff --staged | grep -iE 'password|api[_-]?key|secret|token' | grep -v 'plac
 - [Claude Agent SDK](https://code.claude.com/docs/en/agent-sdk) — 智能体核心
 - [MinerU](https://mineru.net) — 文档解析
 - [Element Plus](https://element-plus.org) — UI 组件
+- [ai_agent_forge](https://github.com/sunxiaohui2025/ai_agent_forge)] - 基础版本
