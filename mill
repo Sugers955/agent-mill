@@ -1,0 +1,206 @@
+#!/usr/bin/env bash
+set -e
+APP="Agent Mill"
+DIR="$(cd "$(dirname "$0")" && pwd)"
+BACKEND_LOG="/tmp/agent-mill-backend.log"
+FRONTEND_LOG="/tmp/agent-mill-frontend.log"
+BACKEND_PID_FILE="/tmp/agent-mill-backend.pid"
+FRONTEND_PID_FILE="/tmp/agent-mill-frontend.pid"
+
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+RED='\033[0;31m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+
+info()  { echo -e "${GREEN}[${APP}]${NC} $1"; }
+warn()  { echo -e "${YELLOW}[${APP}]${NC} $1"; }
+error() { echo -e "${RED}[${APP}]${NC} $1"; }
+
+cmd() {
+  local DESC=$1; shift
+  echo -e "${CYAN}>>>${NC} ${DESC}"
+  "$@"
+}
+
+find_backend_pid() {
+  local pid=$(cat "$BACKEND_PID_FILE" 2>/dev/null || echo "")
+  if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then echo "$pid"; return 0; fi
+  pid=$(pgrep -f "uvicorn app.main:app" 2>/dev/null | head -1)
+  if [ -n "$pid" ]; then echo "$pid"; return 0; fi
+  echo ""
+}
+
+find_frontend_pid() {
+  local pid=$(cat "$FRONTEND_PID_FILE" 2>/dev/null || echo "")
+  if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then echo "$pid"; return 0; fi
+  pid=$(pgrep -f "vite" 2>/dev/null | head -1)
+  if [ -n "$pid" ]; then echo "$pid"; return 0; fi
+  echo ""
+}
+
+is_running()       { [ -n "$(find_backend_pid)" ]; }
+is_frontend_running() { [ -n "$(find_frontend_pid)" ]; }
+
+start() {
+  if is_running; then
+    warn "后端已在运行 (pid $(find_backend_pid))"
+  else
+    cmd "启动后端 (uvicorn :8000)..." \
+      nohup "$DIR/backend/.venv/bin/python" -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload \
+      > "$BACKEND_LOG" 2>&1 &
+    echo $! > "$BACKEND_PID_FILE"
+    sleep 2
+    if is_running; then
+      info "后端已启动 → http://localhost:8000"
+    else
+      error "后端启动失败, 查看日志: tail -30 $BACKEND_LOG"
+      return 1
+    fi
+  fi
+
+  if is_frontend_running; then
+    warn "前端已在运行 (pid $(find_frontend_pid))"
+  else
+    cmd "启动前端 (vite :5173)..." \
+      nohup npm --prefix "$DIR/frontend" run dev \
+      > "$FRONTEND_LOG" 2>&1 &
+    echo $! > "$FRONTEND_PID_FILE"
+    sleep 3
+    if is_frontend_running; then
+      info "前端已启动 → http://localhost:5173"
+    else
+      warn "前端可能未启动, 查看日志: tail -30 $FRONTEND_LOG"
+    fi
+  fi
+
+  echo ""
+  info "✅ ${APP} 已运行:"
+  echo "   后端 API:  http://localhost:8000"
+  echo "   前端页面:  http://localhost:5173"
+  echo "   健康检查:  http://localhost:8000/api/health"
+}
+
+stop() {
+  local killed=false
+
+  local fpid=$(find_frontend_pid)
+  if [ -n "$fpid" ]; then
+    cmd "停止前端 (pid $fpid)..." kill "$fpid" 2>/dev/null || true
+    rm -f "$FRONTEND_PID_FILE"
+    killed=true
+  fi
+
+  local bpid=$(find_backend_pid)
+  if [ -n "$bpid" ]; then
+    cmd "停止后端 (pid $bpid)..." kill "$bpid" 2>/dev/null || true
+    rm -f "$BACKEND_PID_FILE"
+    killed=true
+  fi
+
+  if $killed; then
+    sleep 1
+    info "${APP} 已停止"
+  else
+    warn "${APP} 未在运行"
+  fi
+}
+
+restart() {
+  cmd "重启 ${APP}..." :
+  stop
+  sleep 1
+  echo ""
+  start
+}
+
+status() {
+  echo "=== ${APP} 运行状态 ==="
+
+  local bpid=$(find_backend_pid)
+  if [ -n "$bpid" ]; then
+    local mem=$(ps -o rss= -p "$bpid" 2>/dev/null | awk '{printf "%.0f MB", $1/1024}' || echo "?")
+    local cpu=$(ps -o %cpu= -p "$bpid" 2>/dev/null | awk '{printf "%.1f%%", $1}' || echo "?")
+    echo -e "  后端:     ${GREEN}运行中${NC}  pid=$bpid  CPU=$cpu  MEM=$mem"
+  else
+    echo -e "  后端:     ${RED}未运行${NC}"
+  fi
+
+  local fpid=$(find_frontend_pid)
+  if [ -n "$fpid" ]; then
+    local mem=$(ps -o rss= -p "$fpid" 2>/dev/null | awk '{printf "%.0f MB", $1/1024}' || echo "?")
+    local cpu=$(ps -o %cpu= -p "$fpid" 2>/dev/null | awk '{printf "%.1f%%", $1}' || echo "?")
+    echo -e "  前端:     ${GREEN}运行中${NC}  pid=$fpid  CPU=$cpu  MEM=$mem"
+  else
+    echo -e "  前端:     ${RED}未运行${NC}"
+  fi
+
+  echo ""
+  echo "  后端日志: tail -f $BACKEND_LOG"
+  echo "  前端日志: tail -f $FRONTEND_LOG"
+}
+
+build() {
+  cmd "构建前端..." npm --prefix "$DIR/frontend" run build
+  info "前端构建完成"
+}
+
+rebuild() {
+  build
+  echo ""
+  restart
+}
+
+logs() {
+  if [ "$1" = "-f" ] || [ "$1" = "--follow" ]; then
+    tail -f "$BACKEND_LOG"
+  elif [ -n "$1" ]; then
+    tail -n "$1" "$BACKEND_LOG"
+  else
+    tail -30 "$BACKEND_LOG"
+  fi
+}
+
+clean() {
+  stop
+  cmd "清理日志文件..." rm -f "$BACKEND_LOG" "$FRONTEND_LOG" "$BACKEND_PID_FILE" "$FRONTEND_PID_FILE"
+  info "已清理"
+}
+
+help() {
+  echo ""
+  echo "${CYAN}μAgent Mill 管理脚本${NC}"
+  echo "=================="
+  echo ""
+  echo "  用法:  ./mill <命令> [参数]"
+  echo ""
+  echo "  命令:"
+  echo "    start      启动后端 + 前端"
+  echo "    stop       停止后端 + 前端"
+  echo "    restart    重启 (stop + start)"
+  echo "    status     查看运行状态"
+  echo "    logs       查看后端日志 (默认30行)"
+  echo "    logs -f    持续追踪后端日志"
+  echo "    build      构建前端 (vue-tsc + vite)"
+  echo "    rebuild    构建前端 + 重启"
+  echo "    clean      停止 + 清理日志"
+  echo ""
+}
+
+case "${1:-help}" in
+  start|up)       start ;;
+  stop|down)      stop ;;
+  restart|re)     restart ;;
+  status|st)      status ;;
+  logs|log)       shift; logs "$@" ;;
+  build)          build ;;
+  rebuild|reb)    rebuild ;;
+  clean)          clean ;;
+  dev)            start ;;
+  help|--help|-h) help ;;
+  *)
+    error "未知命令: $1"
+    help
+    exit 1
+    ;;
+esac

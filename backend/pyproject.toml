@@ -1,0 +1,39 @@
+[project]
+name = "agent-mill-backend"
+version = "0.1.0"
+description = "Agent Mill backend"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "pydantic>=2.7",
+    "pydantic-settings>=2.3",
+    "sqlalchemy>=2.0",
+    "alembic>=1.13",
+    # PostgreSQL 驱动（可选）
+    "asyncpg>=0.29",
+    "psycopg[binary]>=3.2",
+    # MySQL 驱动（可选）
+    "aiomysql>=0.2",
+    "pymysql>=1.1",
+    "passlib[bcrypt]>=1.7",
+    "pyjwt>=2.9",
+    "python-multipart>=0.0.9",
+    "pyyaml>=6.0",
+    "httpx>=0.27",
+    "anyio>=4.4",
+    "claude-agent-sdk>=0.1.0",
+    "openai>=1.50",
+    "cryptography>=43",
+    "aiofiles>=23",
+    # File parsing fallbacks (used when MinerU is disabled or fails)
+    "pypdf>=5.0",
+    "python-docx>=1.1",
+    "openpyxl>=3.1",
+    "beautifulsoup4>=4.12",
+    "zvec>=0.5",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*"]

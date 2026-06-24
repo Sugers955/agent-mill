@@ -1,0 +1,54 @@
+# 根目录部署配置（含真实密码，绝不提交）
+.env
+
+# Python 缓存与构建产物（全库通用）
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+backend/.env
+backend/.env.local
+backend/.venv/
+
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/.env.local
+frontend/dist.zip
+
+# IDE & 开发工具
+.history/
+.vscode/
+.idea/
+.claude/
+.claude/settings.local.json
+.workbuddy/
+
+# AI 编程工具配置（本地生成，不提交）
+CLAUDE.md
+
+# 存储（运行时数据，不提交源码）
+storage/uploads/*
+!storage/uploads/.gitkeep
+storage/skills/*
+!storage/skills/.gitkeep
+storage/outputs/*
+storage/vectors/*
+!storage/vectors/.gitkeep
+
+.DS_Store
+*.log
+
+# 部署产物
+deploy/agent-mill-images.tar.gz
+deploy/.env
+
+# Generic secrets safety net
+*.pem
+*.key
+secrets.json
+.secrets/
+
+# 原始素材
+asset/
